@@ -1,0 +1,28 @@
+dataset:
+  name: imagenet_folder   # options: imagenet_folder, cifar100
+  root: ./data/imagenet   # expected: ./data/imagenet/val/<class_name>/*.JPEG
+  split: val
+  subset_per_class: 10
+  batch_size: 64
+  num_workers: 4
+
+models:
+  names:
+    - resnet50
+    - vit_b_16
+    # - convnext_tiny
+
+corruptions:
+  rotation_degrees: [0, 5, 10, 15, 20, 30]
+  translation_pixels: [0, 4, 8, 12, 16]
+  gaussian_sigmas: [0.0, 0.02, 0.05, 0.10, 0.15]
+
+evaluation:
+  device: auto            # auto, cpu, cuda, mps
+  seed: 42
+  topk: [1, 5]
+  bootstrap_iters: 1000
+
+output:
+  output_dir: ./results
+  run_name: baseline
