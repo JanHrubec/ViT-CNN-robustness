@@ -59,6 +59,7 @@ def _evaluate_loader(
     per_sample_hits: dict[int, list[int]] = {k: [] for k in topk}
     nll_sum = 0.0
     nll_list: list[float] = []
+    pred_list: list[int] = []
     ece_acc = ECEAccumulator(bins=metrics_cfg.ece_bins, device=device) if metrics_cfg.enable_ece else None
     total = 0
 
@@ -73,6 +74,10 @@ def _evaluate_loader(
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             logits = model(images)
+
+            if metrics_cfg.enable_stability and save_per_sample:
+                preds = torch.argmax(logits, dim=1).detach().cpu().tolist()
+                pred_list.extend([int(p) for p in preds])
 
             if metrics_cfg.enable_topk:
                 hit_map = topk_hits_per_sample(logits, targets, topk)
@@ -100,6 +105,7 @@ def _evaluate_loader(
     metrics["nll_list"] = nll_list if (metrics_cfg.enable_nll and save_per_sample) else []
     metrics["ece"] = ece_acc.compute() if ece_acc is not None else None
     metrics["indices"] = indices if save_per_sample else None
+    metrics["pred_list"] = pred_list if (metrics_cfg.enable_stability and save_per_sample) else []
     return metrics
 
 
@@ -170,6 +176,7 @@ def evaluate_clean(
         h5 = m["hits"].get(5, [0] * n)
         nll_list = m.get("nll_list", [None] * n)
         indices = m.get("indices")
+        pred_list = m.get("pred_list", [None] * n)
         for i in range(n):
             per_sample_rows.append(
                 {
@@ -182,6 +189,7 @@ def evaluate_clean(
                     "top1_correct": int(h1[i]) if metrics_cfg.enable_topk else None,
                     "top5_correct": int(h5[i]) if metrics_cfg.enable_topk else None,
                     "nll": float(nll_list[i]) if (metrics_cfg.enable_nll and nll_list[i] is not None) else None,
+                    "top1_pred": int(pred_list[i]) if (metrics_cfg.enable_stability and pred_list[i] is not None) else None,
                 }
             )
 
@@ -258,6 +266,7 @@ def evaluate_corruption(
         h5 = m["hits"].get(5, [0] * n)
         nll_list = m.get("nll_list", [None] * n)
         indices = m.get("indices")
+        pred_list = m.get("pred_list", [None] * n)
         for i in range(n):
             per_sample_rows.append(
                 {
@@ -270,6 +279,7 @@ def evaluate_corruption(
                     "top1_correct": int(h1[i]) if metrics_cfg.enable_topk else None,
                     "top5_correct": int(h5[i]) if metrics_cfg.enable_topk else None,
                     "nll": float(nll_list[i]) if (metrics_cfg.enable_nll and nll_list[i] is not None) else None,
+                    "top1_pred": int(pred_list[i]) if (metrics_cfg.enable_stability and pred_list[i] is not None) else None,
                 }
             )
 

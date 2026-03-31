@@ -12,6 +12,7 @@ from .metrics import audc, robustness_ratio
 from .models import load_pretrained_model
 from .plots import plot_degradation_curves
 from .runner import EvalResult, evaluate_clean, evaluate_corruption
+from .stability import compute_prediction_stability
 from .utils import ensure_dir, resolve_device, set_global_seed
 
 
@@ -125,6 +126,11 @@ def main() -> None:
     save_csv(summary_csv, summary_rows)
     if cfg.evaluation.save_per_sample:
         save_csv(per_sample_csv, per_sample_rows)
+    if cfg.metrics.enable_stability:
+        if not cfg.evaluation.save_per_sample:
+            raise ValueError("Prediction stability requires save_per_sample=true.")
+        stability_rows = compute_prediction_stability(per_sample_rows)
+        save_csv(run_dir / "stability.csv", stability_rows)
     # Generate quick diagnostic figures right after metrics are saved.
     plot_degradation_curves(results_csv, run_dir)
 

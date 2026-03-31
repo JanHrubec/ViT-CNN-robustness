@@ -48,6 +48,7 @@ class MetricsConfig:
     enable_nll: bool = False
     enable_ece: bool = False
     ece_bins: int = 15
+    enable_stability: bool = False
 
 
 @dataclass

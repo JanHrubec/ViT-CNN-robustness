@@ -30,6 +30,7 @@ metrics:
   enable_nll: false
   enable_ece: false
   ece_bins: 15
+  enable_stability: false
 
 output:
   output_dir: ./results
