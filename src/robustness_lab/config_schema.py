@@ -38,6 +38,7 @@ class EvaluationConfig:
     seed: int = 42
     topk: list[int] = field(default_factory=lambda: [1, 5])
     bootstrap_iters: int = 1000
+    save_per_sample: bool = True
 
 
 @dataclass

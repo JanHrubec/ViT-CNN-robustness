@@ -131,7 +131,12 @@ Each run creates `results/<run_name>_<timestamp>/` with:
 
 - `results.csv`
 	- One row per model × condition.
-	- Includes `top1`, `top5`, `severity`, and `robustness_ratio_top1`.
+	- Includes `top1`, `top5`, `severity`, `robustness_ratio_top1`, and bootstrap CIs.
+
+- `per_sample.csv`
+	- One row per sample × model × condition.
+	- Includes `top1_correct` and `top5_correct`.
+	- Useful for paired significance tests and deeper failure analysis.
 
 - `summary.csv`
 	- One row per model × corruption family.

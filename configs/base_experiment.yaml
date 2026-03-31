@@ -13,8 +13,9 @@ models:
     # - convnext_tiny
 
 corruptions:
-  rotation_degrees: [0, 5, 10, 15, 20, 30]
-  translation_pixels: [0, 4, 8, 12, 16]
+  # Symmetric sweeps reduce directional bias in analysis.
+  rotation_degrees: [-30, -20, -15, -10, -5, 0, 5, 10, 15, 20, 30]
+  translation_pixels: [-16, -12, -8, -4, 0, 4, 8, 12, 16]
   gaussian_sigmas: [0.0, 0.02, 0.05, 0.10, 0.15]
 
 evaluation:
@@ -22,6 +23,7 @@ evaluation:
   seed: 42
   topk: [1, 5]
   bootstrap_iters: 1000
+  save_per_sample: true
 
 output:
   output_dir: ./results

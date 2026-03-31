@@ -50,18 +50,19 @@ def main() -> None:
     run_name = f"{cfg.output.run_name}_{utc_timestamp()}"
     run_dir = ensure_dir(Path(cfg.output.output_dir) / run_name)
 
-    base_dataset = build_base_dataset(cfg.dataset)
+    base_dataset = build_base_dataset(cfg.dataset, seed=cfg.evaluation.seed)
     specs = build_corruption_specs(cfg.corruptions)
     topk = tuple(sorted(set(cfg.evaluation.topk)))
 
     rows: list[dict] = []
     summary_rows: list[dict] = []
+    per_sample_rows: list[dict] = []
 
     for model_name in cfg.models.names:
         # Every model comes bundled with its own expected preprocessing.
         bundle = load_pretrained_model(model_name, device)
 
-        clean = evaluate_clean(
+        clean_outcome = evaluate_clean(
             model=bundle.model,
             model_name=bundle.name,
             preprocess=bundle.preprocess,
@@ -69,13 +70,18 @@ def main() -> None:
             dataset_cfg=cfg.dataset,
             device=device,
             topk=topk,
+            bootstrap_iters=cfg.evaluation.bootstrap_iters,
+            seed=cfg.evaluation.seed,
+            save_per_sample=cfg.evaluation.save_per_sample,
         )
+        clean = clean_outcome.result
         rows.append(_result_row(clean))
+        per_sample_rows.extend(clean_outcome.per_sample_rows)
 
         family_scores: dict[str, list[tuple[float, float]]] = {}
 
         for spec in specs:
-            result = evaluate_corruption(
+            corrupted_outcome = evaluate_corruption(
                 model=bundle.model,
                 model_name=bundle.name,
                 preprocess=bundle.preprocess,
@@ -85,8 +91,12 @@ def main() -> None:
                 topk=topk,
                 spec=spec,
                 seed=cfg.evaluation.seed,
+                bootstrap_iters=cfg.evaluation.bootstrap_iters,
+                save_per_sample=cfg.evaluation.save_per_sample,
             )
+            result = corrupted_outcome.result
             rows.append(_result_row(result, clean_top1=clean.top1))
+            per_sample_rows.extend(corrupted_outcome.per_sample_rows)
             family_scores.setdefault(spec.family, []).append((spec.severity, result.top1))
 
         # Summarize each corruption family into one number for easier comparison.
@@ -106,10 +116,13 @@ def main() -> None:
     config_snapshot = run_dir / "config_snapshot.json"
     results_csv = run_dir / "results.csv"
     summary_csv = run_dir / "summary.csv"
+    per_sample_csv = run_dir / "per_sample.csv"
 
     save_json(config_snapshot, asdict(cfg))
     save_csv(results_csv, rows)
     save_csv(summary_csv, summary_rows)
+    if cfg.evaluation.save_per_sample:
+        save_csv(per_sample_csv, per_sample_rows)
     # Generate quick diagnostic figures right after metrics are saved.
     plot_degradation_curves(results_csv, run_dir)
 

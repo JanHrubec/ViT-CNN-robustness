@@ -82,6 +82,50 @@ Use deterministic, parameterized corruption sweeps.
 - Top-5 accuracy (ImageNet context).
 - Calibration shift (ECE) under corruption (optional but informative).
 
+## Methodology rationale (why these metrics)
+
+### Why use top-$k$ at all?
+- **Pros**
+   - Top-1 is the standard benchmark for ImageNet and aligns with most published baselines.
+   - Top-5 is informative for ImageNet’s fine-grained class structure (many visually similar classes).
+   - Using top-$k$ makes comparison with prior work straightforward and reduces ambiguity.
+
+- **Cons**
+   - Top-$k$ hides confidence and calibration issues.
+   - It treats all mistakes equally, even when the model’s prediction is “almost right.”
+   - It does not quantify *how* the probability mass shifts under corruption.
+
+### Why still keep top-$k$ as the primary metric?
+- This project’s main research question is about **robustness of correctness**, not just calibration.
+- Top-$k$ is an accepted *standard* in vision robustness papers, which helps frame results in the literature.
+- Using top-$1$ plus robustness ratio and AUDC gives a compact, interpretable degradation story.
+
+### Alternatives and when to use them
+- **Negative log-likelihood / cross-entropy**
+   - **Pros**: captures confidence shifts.
+   - **Cons**: harder to interpret for non-ML readers; also sensitive to label noise.
+   - **Use case**: add if you want a probability-level robustness analysis.
+
+- **ECE (Expected Calibration Error)**
+   - **Pros**: measures reliability under corruption.
+   - **Cons**: depends on binning choices; not a direct accuracy measure.
+   - **Use case**: good secondary metric, especially in safety-sensitive contexts.
+
+- **mCE (mean Corruption Error, ImageNet-C style)**
+   - **Pros**: aligns with robustness benchmarks.
+   - **Cons**: requires specific corruption sets; not directly comparable if custom transforms are used.
+   - **Use case**: if you extend to ImageNet-C or want to align with that literature.
+
+- **Consistency / stability metrics** (e.g., prediction agreement across small transforms)
+   - **Pros**: directly tests invariance/equivariance.
+   - **Cons**: requires per-sample tracking and defined perturbation neighborhoods.
+   - **Use case**: excellent for translation/rotation invariance analysis.
+
+### Decision review (what may change later)
+- If your corruption analysis shows that top-1 and top-5 are too coarse, add cross-entropy and ECE as secondary plots.
+- If you adopt ImageNet-C, consider mCE for comparability.
+- For translation invariance specifically, add prediction-consistency metrics (agreement under small shifts).
+
 ## Statistical reporting
 - Bootstrap 95% confidence intervals for accuracy and robustness deltas.
 - Paired tests over identical samples per model/corruption level.

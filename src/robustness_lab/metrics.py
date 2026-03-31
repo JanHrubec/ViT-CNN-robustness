@@ -24,6 +24,21 @@ def update_topk_correct(
         state[k] = state.get(k, 0) + int(hits)
 
 
+def topk_hits_per_sample(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+    ks: Iterable[int],
+) -> dict[int, torch.Tensor]:
+    """Return per-sample binary hit tensors for each requested top-k."""
+    max_k = max(ks)
+    _, pred = logits.topk(max_k, dim=1)
+    correct = pred.eq(targets.view(-1, 1))
+    out: dict[int, torch.Tensor] = {}
+    for k in ks:
+        out[k] = correct[:, :k].any(dim=1)
+    return out
+
+
 def topk_accuracy_from_state(state: dict[int, int], total: int) -> dict[str, float]:
     """Convert accumulated counts into top-k accuracies."""
     if total <= 0:

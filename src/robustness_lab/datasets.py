@@ -50,7 +50,7 @@ def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
     return Subset(dataset, selected)
 
 
-def build_base_dataset(cfg: DatasetConfig) -> Dataset:
+def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
     """Build untransformed base dataset; transforms are attached later per condition."""
     root = Path(cfg.root)
 
@@ -67,7 +67,7 @@ def build_base_dataset(cfg: DatasetConfig) -> Dataset:
         raise ValueError(f"Unsupported dataset name: {cfg.name}")
 
     if cfg.subset_per_class is not None:
-        dataset = _subset_per_class(dataset, cfg.subset_per_class, seed=42)
+        dataset = _subset_per_class(dataset, cfg.subset_per_class, seed=seed)
 
     return dataset
 
