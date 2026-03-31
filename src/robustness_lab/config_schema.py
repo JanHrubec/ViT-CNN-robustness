@@ -42,6 +42,15 @@ class EvaluationConfig:
 
 
 @dataclass
+class MetricsConfig:
+    # Keep the defaults aligned with common robustness literature.
+    enable_topk: bool = True
+    enable_nll: bool = False
+    enable_ece: bool = False
+    ece_bins: int = 15
+
+
+@dataclass
 class OutputConfig:
     output_dir: str = "./results"
     run_name: str = "baseline"
@@ -54,6 +63,7 @@ class ExperimentConfig:
     models: ModelsConfig = field(default_factory=ModelsConfig)
     corruptions: CorruptionsConfig = field(default_factory=CorruptionsConfig)
     evaluation: EvaluationConfig = field(default_factory=EvaluationConfig)
+    metrics: MetricsConfig = field(default_factory=MetricsConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
 
 
@@ -77,5 +87,6 @@ def load_experiment_config(path: str | Path) -> ExperimentConfig:
         models=_merge_dataclass(ModelsConfig, payload.get("models")),
         corruptions=_merge_dataclass(CorruptionsConfig, payload.get("corruptions")),
         evaluation=_merge_dataclass(EvaluationConfig, payload.get("evaluation")),
+        metrics=_merge_dataclass(MetricsConfig, payload.get("metrics")),
         output=_merge_dataclass(OutputConfig, payload.get("output")),
     )

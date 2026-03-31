@@ -25,6 +25,12 @@ evaluation:
   bootstrap_iters: 1000
   save_per_sample: true
 
+metrics:
+  enable_topk: true
+  enable_nll: false
+  enable_ece: false
+  ece_bins: 15
+
 output:
   output_dir: ./results
   run_name: baseline

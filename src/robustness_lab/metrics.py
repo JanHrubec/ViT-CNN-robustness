@@ -39,6 +39,49 @@ def topk_hits_per_sample(
     return out
 
 
+def negative_log_likelihood_per_sample(
+    logits: torch.Tensor,
+    targets: torch.Tensor,
+) -> torch.Tensor:
+    """Return per-sample negative log-likelihood values."""
+    log_probs = torch.log_softmax(logits, dim=1)
+    return -log_probs.gather(1, targets.view(-1, 1)).squeeze(1)
+
+
+class ECEAccumulator:
+    """Streaming Expected Calibration Error accumulator."""
+
+    def __init__(self, bins: int = 15, device: torch.device | None = None) -> None:
+        self.bins = bins
+        self.device = device
+        self.edges = torch.linspace(0, 1, bins + 1, device=device)
+        self.counts = torch.zeros(bins, device=device)
+        self.conf_sums = torch.zeros(bins, device=device)
+        self.acc_sums = torch.zeros(bins, device=device)
+
+    def update(self, logits: torch.Tensor, targets: torch.Tensor) -> None:
+        probs = torch.softmax(logits, dim=1)
+        conf, pred = probs.max(dim=1)
+        acc = pred.eq(targets).float()
+
+        # Bin by confidence; loop is fine for 15 bins and keeps clarity.
+        for i in range(self.bins):
+            left, right = self.edges[i], self.edges[i + 1]
+            mask = (conf > left) & (conf <= right)
+            if mask.any():
+                bin_count = mask.float().sum()
+                self.counts[i] += bin_count
+                self.conf_sums[i] += conf[mask].sum()
+                self.acc_sums[i] += acc[mask].sum()
+
+    def compute(self) -> float:
+        total = self.counts.sum().clamp_min(1.0)
+        avg_conf = torch.where(self.counts > 0, self.conf_sums / self.counts, 0.0)
+        avg_acc = torch.where(self.counts > 0, self.acc_sums / self.counts, 0.0)
+        ece = (self.counts / total) * torch.abs(avg_acc - avg_conf)
+        return float(ece.sum().item())
+
+
 def topk_accuracy_from_state(state: dict[int, int], total: int) -> dict[str, float]:
     """Convert accumulated counts into top-k accuracies."""
     if total <= 0:

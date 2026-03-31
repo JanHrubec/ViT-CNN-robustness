@@ -31,6 +31,7 @@ The code is intentionally split into small files so you can extend each part ind
 		- model list,
 		- corruption severity lists,
 		- evaluation options,
+		- metric selection (top-$k$, NLL, ECE),
 		- output path/run label.
 
 - [src/robustness_lab/config_schema.py](src/robustness_lab/config_schema.py)
@@ -131,7 +132,8 @@ Each run creates `results/<run_name>_<timestamp>/` with:
 
 - `results.csv`
 	- One row per model × condition.
-	- Includes `top1`, `top5`, `severity`, `robustness_ratio_top1`, and bootstrap CIs.
+	- Includes `top1`, `top5`, `severity`, `robustness_ratio_top1`, and bootstrap CIs when enabled.
+	- If NLL/ECE are enabled, the same rows include `nll_mean` and `ece`.
 
 - `per_sample.csv`
 	- One row per sample × model × condition.

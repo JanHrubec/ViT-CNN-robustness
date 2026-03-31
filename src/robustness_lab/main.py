@@ -30,9 +30,8 @@ def parse_args() -> argparse.Namespace:
 def _result_row(result: EvalResult, clean_top1: float | None = None) -> dict:
     # Convert dataclass to a plain dict so CSV writing is straightforward.
     row = asdict(result)
-    if clean_top1 is None:
-        # Clean baseline should always have robustness ratio 1.0.
-        row["robustness_ratio_top1"] = 1.0 if result.split == "clean" else 0.0
+    if result.top1 is None or clean_top1 is None:
+        row["robustness_ratio_top1"] = None
     else:
         # For corrupted rows, ratio is relative to this model's clean performance.
         row["robustness_ratio_top1"] = robustness_ratio(clean_top1, result.top1)
@@ -73,6 +72,7 @@ def main() -> None:
             bootstrap_iters=cfg.evaluation.bootstrap_iters,
             seed=cfg.evaluation.seed,
             save_per_sample=cfg.evaluation.save_per_sample,
+            metrics_cfg=cfg.metrics,
         )
         clean = clean_outcome.result
         rows.append(_result_row(clean))
@@ -93,11 +93,13 @@ def main() -> None:
                 seed=cfg.evaluation.seed,
                 bootstrap_iters=cfg.evaluation.bootstrap_iters,
                 save_per_sample=cfg.evaluation.save_per_sample,
+                metrics_cfg=cfg.metrics,
             )
             result = corrupted_outcome.result
             rows.append(_result_row(result, clean_top1=clean.top1))
             per_sample_rows.extend(corrupted_outcome.per_sample_rows)
-            family_scores.setdefault(spec.family, []).append((spec.severity, result.top1))
+            if result.top1 is not None:
+                family_scores.setdefault(spec.family, []).append((spec.severity, result.top1))
 
         # Summarize each corruption family into one number for easier comparison.
         for family, points in family_scores.items():
@@ -109,7 +111,7 @@ def main() -> None:
                     "model": bundle.name,
                     "corruption_family": family,
                     "clean_top1": clean.top1,
-                    "audc_top1": audc(severities, accuracies),
+                    "audc_top1": audc(severities, accuracies) if clean.top1 is not None else None,
                 }
             )
 
