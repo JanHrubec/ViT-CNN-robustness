@@ -9,10 +9,9 @@ import yaml
 
 @dataclass
 class DatasetConfig:
-    # `imagenet_folder` assumes ImageFolder-style directory structure.
-    name: str = "imagenet_folder"
-    root: str = "./data/imagenet"
-    split: str = "val"
+    # CIFAR-100 is the only supported dataset in this project.
+    name: str = "cifar100"
+    root: str = "./data/cifar100"
     subset_per_class: int | None = 10
     batch_size: int = 64
     num_workers: int = 4

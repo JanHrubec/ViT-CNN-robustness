@@ -1,7 +1,6 @@
 dataset:
-  name: imagenet_folder   # options: imagenet_folder, cifar100
-  root: ./data/imagenet   # expected: ./data/imagenet/val/<class_name>/*.JPEG
-  split: val
+  name: cifar100
+  root: ./data/cifar100
   subset_per_class: 10
   batch_size: 64
   num_workers: 4

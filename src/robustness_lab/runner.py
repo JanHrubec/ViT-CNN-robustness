@@ -62,6 +62,7 @@ def _evaluate_loader(
     pred_list: list[int] = []
     ece_acc = ECEAccumulator(bins=metrics_cfg.ece_bins, device=device) if metrics_cfg.enable_ece else None
     total = 0
+    indices_list: list[int] = []
 
     with torch.no_grad():
         for batch in tqdm(loader, desc=desc, leave=False):
@@ -96,15 +97,20 @@ def _evaluate_loader(
             if ece_acc is not None:
                 ece_acc.update(logits, targets)
 
+            if save_per_sample and indices is not None:
+                indices_list.extend([int(x) for x in indices])
+
             total += targets.shape[0]
 
-    metrics = topk_accuracy_from_state(state, total) if metrics_cfg.enable_topk else {}
+    metrics: dict[str, object] = {}
+    if metrics_cfg.enable_topk:
+        metrics.update(topk_accuracy_from_state(state, total))
     metrics["count"] = total
     metrics["hits"] = per_sample_hits if (metrics_cfg.enable_topk and save_per_sample) else {}
     metrics["nll_mean"] = (nll_sum / total) if (metrics_cfg.enable_nll and total > 0) else None
     metrics["nll_list"] = nll_list if (metrics_cfg.enable_nll and save_per_sample) else []
     metrics["ece"] = ece_acc.compute() if ece_acc is not None else None
-    metrics["indices"] = indices if save_per_sample else None
+    metrics["indices"] = indices_list if save_per_sample else None
     metrics["pred_list"] = pred_list if (metrics_cfg.enable_stability and save_per_sample) else []
     return metrics
 

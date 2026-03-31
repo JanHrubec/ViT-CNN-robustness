@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
+import multiprocessing as mp
 from typing import Callable
 
 import torch
 from torch.utils.data import DataLoader, Dataset, Subset
-from torchvision.datasets import CIFAR100, ImageFolder
+from torchvision.datasets import CIFAR100
 
 from .config_schema import DatasetConfig
 
@@ -59,19 +60,12 @@ def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
 
 def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
     """Build untransformed base dataset; transforms are attached later per condition."""
-    root = Path(cfg.root)
+    root = Path(cfg.root).expanduser()
 
-    if cfg.name == "imagenet_folder":
-        split_root = root / cfg.split
-        if not split_root.exists():
-            raise FileNotFoundError(
-                f"ImageNet folder split not found at {split_root}. Expected class subfolders."
-            )
-        dataset = ImageFolder(root=str(split_root), transform=None)
-    elif cfg.name == "cifar100":
+    if cfg.name == "cifar100":
         dataset = CIFAR100(root=str(root), train=False, download=True, transform=None)
     else:
-        raise ValueError(f"Unsupported dataset name: {cfg.name}")
+        raise ValueError("Only cifar100 is supported in this project.")
 
     if cfg.subset_per_class is not None:
         dataset = _subset_per_class(dataset, cfg.subset_per_class, seed=seed)
@@ -81,10 +75,15 @@ def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
 
 def build_loader(dataset: Dataset, cfg: DatasetConfig) -> DataLoader:
     """Build evaluation dataloader with stable ordering (`shuffle=False`)."""
+    num_workers = cfg.num_workers
+    start_method = mp.get_start_method(allow_none=True)
+    if num_workers > 0 and start_method in (None, "spawn", "forkserver"):
+        # Local transform closures are not picklable under spawn; use single worker.
+        num_workers = 0
     return DataLoader(
         dataset,
         batch_size=cfg.batch_size,
-        num_workers=cfg.num_workers,
+        num_workers=num_workers,
         pin_memory=True,
         shuffle=False,
     )

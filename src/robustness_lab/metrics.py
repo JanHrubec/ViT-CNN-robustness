@@ -105,7 +105,7 @@ def audc(severities: list[float], accuracies: list[float]) -> float:
         return 0.0
     x = np.asarray(severities, dtype=float)
     y = np.asarray(accuracies, dtype=float)
-    area = np.trapz(y, x)
+    area = np.trapezoid(y, x)
     denom = max(x.max() - x.min(), 1e-12)
     return float(area / denom)
 

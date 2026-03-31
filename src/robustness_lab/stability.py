@@ -32,9 +32,9 @@ def compute_prediction_stability(per_sample_rows: Iterable[dict]) -> list[dict]:
         pred = row.get("top1_pred")
         family = row.get("corruption_family")
         severity = row.get("severity")
-        if model is None or idx is None or pred is None:
+        if model is None or idx is None or pred is None or family is None or severity is None:
             continue
-        key = (model, family, float(severity))
+        key = (str(model), str(family), float(severity))
         clean = clean_pred.get((model, int(idx)))
         if clean is None:
             continue

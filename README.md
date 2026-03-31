@@ -48,13 +48,8 @@ Rationale: tests whether transformer‑style design choices in CNNs close robust
 
 ## 4) Dataset choice and sampling
 
-### Preferred
-- **ImageNet‑1k validation subset** (e.g., 10–25 images/class for fast iterations).
-
-### Fallback
-- **CIFAR‑100** only if ImageNet access/storage is not available.
-
-Important caveat: CIFAR‑100 is a resolution/domain mismatch for ImageNet‑pretrained models and should be reported as exploratory.
+### Dataset used
+- **CIFAR‑100** (fixed for this project)
 
 ---
 
@@ -179,9 +174,7 @@ Interpretability should link observed failures to the expected behavior of local
 
 2) Prepare data
 
-- `./data/imagenet/val/<class_name>/*.jpg`
-
-If ImageNet is unavailable, switch to `cifar100` in [configs/base_experiment.yaml](configs/base_experiment.yaml).
+- CIFAR‑100 will be downloaded automatically to `./data/cifar100`.
 
 ---
 
