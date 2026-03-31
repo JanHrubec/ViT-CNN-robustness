@@ -7,9 +7,9 @@ dataset:
 
 models:
   names:
-    - resnet50
-    - vit_b_16
-    # - convnext_tiny
+    - resnet18
+    - vit_b_32
+    - convnext_tiny
 
 corruptions:
   # Symmetric sweeps reduce directional bias in analysis.
@@ -26,10 +26,10 @@ evaluation:
 
 metrics:
   enable_topk: true
-  enable_nll: false
-  enable_ece: false
+  enable_nll: true
+  enable_ece: true
   ece_bins: 15
-  enable_stability: false
+  enable_stability: true
 
 output:
   output_dir: ./results

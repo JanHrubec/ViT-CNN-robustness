@@ -19,7 +19,7 @@ To what extent does the architectural transition from convolution to self‑atte
 ## 2) Scope and fairness constraints
 
 1. **Task**: Image classification only.
-2. **Training regime**: Start with frozen, pretrained ImageNet‑1k models (no finetuning).
+2. **Training regime**: Start with frozen pretrained models (no finetuning).
 3. **Input resolution**: Use each model’s official preprocessing pipeline to avoid mismatched normalization or resizing.
 4. **Evaluation set**: Identical dataset subset and identical corruption pipeline across all models.
 5. **Compute budget**: Inference‑only first, optional finetuning extension if needed.
@@ -29,10 +29,10 @@ To what extent does the architectural transition from convolution to self‑atte
 ## 3) Model selection strategy
 
 ### Core comparison (Phase A)
-- **CNN**: ResNet‑50
-- **ViT**: ViT‑B/16
+- **CNN**: ResNet‑18
+- **ViT**: ViT‑B/32
 
-Rationale: canonical baselines used widely in robustness literature and fully supported by torchvision.
+Rationale: smaller, faster baselines that remain standard and reproducible.
 
 ### Architecture bridge (Phase B)
 - **CNN‑modernized**: ConvNeXt‑Tiny (optional)
@@ -77,7 +77,7 @@ $$R(c) = \frac{Acc_{corrupt}(c)}{Acc_{clean}}$$
 3. **AUDC**: normalized area under degradation curve.
 
 ### Secondary metrics (configurable)
-- **Top‑5 accuracy** (ImageNet context)
+- **Top‑5 accuracy**
 - **NLL (cross‑entropy)**
 - **ECE** (calibration under corruption)
 
@@ -89,7 +89,7 @@ For rotation/translation, **prediction stability** across small shifts can direc
 ## 7) Methodology decisions (with trade‑offs)
 
 ### Why top‑$k$ is still the baseline
-- **Pros**: standard in ImageNet robustness literature, easy to interpret, comparable across papers.
+- **Pros**: standard in vision robustness literature, easy to interpret, comparable across papers.
 - **Cons**: hides confidence shifts and probability mass changes.
 
 ### Why add NLL and ECE (optional)
