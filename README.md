@@ -139,6 +139,7 @@ Each run creates `results/<run_name>_<timestamp>/` with:
 	- One row per sample × model × condition.
 	- Includes `top1_correct` and `top5_correct`.
 	- Useful for paired significance tests and deeper failure analysis.
+	- `sample_index` refers to the underlying dataset index, so rows align across conditions.
 
 - `summary.csv`
 	- One row per model × corruption family.

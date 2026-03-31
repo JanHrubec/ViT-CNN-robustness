@@ -63,7 +63,12 @@ def _evaluate_loader(
     total = 0
 
     with torch.no_grad():
-        for images, targets in tqdm(loader, desc=desc, leave=False):
+        for batch in tqdm(loader, desc=desc, leave=False):
+            if len(batch) == 3:
+                images, targets, indices = batch
+            else:
+                images, targets = batch
+                indices = None
             # Non-blocking transfer helps when using pinned CPU memory.
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
@@ -94,6 +99,7 @@ def _evaluate_loader(
     metrics["nll_mean"] = (nll_sum / total) if (metrics_cfg.enable_nll and total > 0) else None
     metrics["nll_list"] = nll_list if (metrics_cfg.enable_nll and save_per_sample) else []
     metrics["ece"] = ece_acc.compute() if ece_acc is not None else None
+    metrics["indices"] = indices if save_per_sample else None
     return metrics
 
 
@@ -111,7 +117,11 @@ def evaluate_clean(
     metrics_cfg: MetricsConfig,
 ) -> EvalOutcome:
     """Evaluate model on uncorrupted images (baseline)."""
-    dataset = TransformedDataset(base_dataset, make_clean_transform(preprocess))
+    dataset = TransformedDataset(
+        base_dataset,
+        make_clean_transform(preprocess),
+        return_index=save_per_sample,
+    )
     loader = build_loader(dataset, dataset_cfg)
     m = _evaluate_loader(
         model,
@@ -159,6 +169,7 @@ def evaluate_clean(
         h1 = m["hits"].get(1, [0] * n)
         h5 = m["hits"].get(5, [0] * n)
         nll_list = m.get("nll_list", [None] * n)
+        indices = m.get("indices")
         for i in range(n):
             per_sample_rows.append(
                 {
@@ -167,7 +178,7 @@ def evaluate_clean(
                     "corruption_family": "none",
                     "corruption_name": "none",
                     "severity": 0.0,
-                    "sample_index": i,
+                    "sample_index": int(indices[i]) if indices is not None else i,
                     "top1_correct": int(h1[i]) if metrics_cfg.enable_topk else None,
                     "top5_correct": int(h5[i]) if metrics_cfg.enable_topk else None,
                     "nll": float(nll_list[i]) if (metrics_cfg.enable_nll and nll_list[i] is not None) else None,
@@ -193,7 +204,11 @@ def evaluate_corruption(
 ) -> EvalOutcome:
     """Evaluate model under one specific corruption setting."""
     transform = make_corruption_transform(spec, preprocess, seed=seed)
-    dataset = TransformedDataset(base_dataset, transform)
+    dataset = TransformedDataset(
+        base_dataset,
+        transform,
+        return_index=save_per_sample,
+    )
     loader = build_loader(dataset, dataset_cfg)
 
     m = _evaluate_loader(
@@ -242,6 +257,7 @@ def evaluate_corruption(
         h1 = m["hits"].get(1, [0] * n)
         h5 = m["hits"].get(5, [0] * n)
         nll_list = m.get("nll_list", [None] * n)
+        indices = m.get("indices")
         for i in range(n):
             per_sample_rows.append(
                 {
@@ -250,7 +266,7 @@ def evaluate_corruption(
                     "corruption_family": spec.family,
                     "corruption_name": spec.name,
                     "severity": float(spec.severity),
-                    "sample_index": i,
+                    "sample_index": int(indices[i]) if indices is not None else i,
                     "top1_correct": int(h1[i]) if metrics_cfg.enable_topk else None,
                     "top5_correct": int(h5[i]) if metrics_cfg.enable_topk else None,
                     "nll": float(nll_list[i]) if (metrics_cfg.enable_nll and nll_list[i] is not None) else None,

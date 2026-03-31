@@ -12,11 +12,16 @@ from .config_schema import DatasetConfig
 
 
 class TransformedDataset(Dataset):
-    """Thin wrapper: keeps labels from base dataset, swaps transform dynamically."""
+    """Thin wrapper: keeps labels from base dataset, swaps transform dynamically.
 
-    def __init__(self, base: Dataset, transform: Callable):
+    When `return_index` is True, __getitem__ returns (image, target, index),
+    which enables paired analyses across corruptions.
+    """
+
+    def __init__(self, base: Dataset, transform: Callable, return_index: bool = False):
         self.base = base
         self.transform = transform
+        self.return_index = return_index
 
     def __len__(self) -> int:
         return len(self.base)
@@ -24,6 +29,8 @@ class TransformedDataset(Dataset):
     def __getitem__(self, idx: int):
         image, target = self.base[idx]
         image = self.transform(image)
+        if self.return_index:
+            return image, target, idx
         return image, target
 
 
