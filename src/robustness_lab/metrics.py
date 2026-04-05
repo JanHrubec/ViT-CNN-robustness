@@ -110,6 +110,21 @@ def audc(severities: list[float], accuracies: list[float]) -> float:
     return float(area / denom)
 
 
+def linear_trend_slope(severities: list[float], values: list[float]) -> float:
+    """Return slope of a least-squares line fitted to value vs severity."""
+    if len(severities) < 2:
+        return 0.0
+    x = np.asarray(severities, dtype=float)
+    y = np.asarray(values, dtype=float)
+    m, _ = np.polyfit(x, y, deg=1)
+    return float(m)
+
+
+def endpoint_delta(reference: float, at_max_severity: float) -> float:
+    """Difference between clean metric and metric at highest severity."""
+    return float(at_max_severity - reference)
+
+
 def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins: int = 15) -> float:
     """Compute classic ECE using equal-width confidence bins."""
     probs = torch.softmax(logits, dim=1)

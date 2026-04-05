@@ -8,7 +8,7 @@ from .config_schema import load_experiment_config
 from .corruptions import build_corruption_specs
 from .datasets import build_base_dataset
 from .io_utils import save_csv, save_json, utc_timestamp
-from .metrics import audc, robustness_ratio
+from .metrics import audc, endpoint_delta, linear_trend_slope, robustness_ratio
 from .models import load_pretrained_model
 from .plots import plot_degradation_curves
 from .runner import EvalResult, evaluate_clean, evaluate_corruption
@@ -79,7 +79,9 @@ def main() -> None:
         rows.append(_result_row(clean))
         per_sample_rows.extend(clean_outcome.per_sample_rows)
 
-        family_scores: dict[str, list[tuple[float, float]]] = {}
+        family_top1: dict[str, list[tuple[float, float]]] = {}
+        family_nll: dict[str, list[tuple[float, float]]] = {}
+        family_ece: dict[str, list[tuple[float, float]]] = {}
 
         for spec in specs:
             corrupted_outcome = evaluate_corruption(
@@ -100,19 +102,42 @@ def main() -> None:
             rows.append(_result_row(result, clean_top1=clean.top1))
             per_sample_rows.extend(corrupted_outcome.per_sample_rows)
             if result.top1 is not None:
-                family_scores.setdefault(spec.family, []).append((spec.severity, result.top1))
+                family_top1.setdefault(spec.family, []).append((spec.severity, result.top1))
+            if result.nll_mean is not None:
+                family_nll.setdefault(spec.family, []).append((spec.severity, result.nll_mean))
+            if result.ece is not None:
+                family_ece.setdefault(spec.family, []).append((spec.severity, result.ece))
 
         # Summarize each corruption family into one number for easier comparison.
-        for family, points in family_scores.items():
-            points = sorted(points, key=lambda x: x[0])
-            severities = [p[0] for p in points]
-            accuracies = [p[1] for p in points]
+        all_families = sorted(set(family_top1) | set(family_nll) | set(family_ece))
+        for family in all_families:
+            top1_points = sorted(family_top1.get(family, []), key=lambda x: x[0])
+            nll_points = sorted(family_nll.get(family, []), key=lambda x: x[0])
+            ece_points = sorted(family_ece.get(family, []), key=lambda x: x[0])
+
+            top1_sev = [p[0] for p in top1_points]
+            top1_vals = [p[1] for p in top1_points]
+            nll_sev = [p[0] for p in nll_points]
+            nll_vals = [p[1] for p in nll_points]
+            ece_sev = [p[0] for p in ece_points]
+            ece_vals = [p[1] for p in ece_points]
+
             summary_rows.append(
                 {
                     "model": bundle.name,
                     "corruption_family": family,
                     "clean_top1": clean.top1,
-                    "audc_top1": audc(severities, accuracies) if clean.top1 is not None else None,
+                    "clean_nll": clean.nll_mean,
+                    "clean_ece": clean.ece,
+                    "audc_top1": audc(top1_sev, top1_vals) if (clean.top1 is not None and len(top1_vals) > 1) else None,
+                    "audc_nll": audc(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
+                    "audc_ece": audc(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
+                    "slope_top1": linear_trend_slope(top1_sev, top1_vals) if len(top1_vals) > 1 else None,
+                    "slope_nll": linear_trend_slope(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
+                    "slope_ece": linear_trend_slope(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
+                    "delta_top1_max": endpoint_delta(clean.top1, top1_vals[-1]) if (clean.top1 is not None and top1_vals) else None,
+                    "delta_nll_max": endpoint_delta(clean.nll_mean, nll_vals[-1]) if (clean.nll_mean is not None and nll_vals) else None,
+                    "delta_ece_max": endpoint_delta(clean.ece, ece_vals[-1]) if (clean.ece is not None and ece_vals) else None,
                 }
             )
 

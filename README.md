@@ -34,11 +34,6 @@ To what extent does the architectural transition from convolution to self‑atte
 
 Rationale: smaller, faster baselines that remain standard and reproducible.
 
-### Architecture bridge (Phase B)
-- **CNN‑modernized**: ConvNeXt‑Tiny (optional)
-
-Rationale: tests whether transformer‑style design choices in CNNs close robustness gaps.
-
 ### Model swap criteria
 - Public pretrained weights available.
 - Similar clean top‑1 baseline on chosen dataset.
@@ -80,6 +75,7 @@ $$R(c) = \frac{Acc_{corrupt}(c)}{Acc_{clean}}$$
 - **Top‑5 accuracy**
 - **NLL (cross‑entropy)**
 - **ECE** (calibration under corruption)
+- **Trend summaries**: AUDC, linear slope, and max-severity delta for top‑1/NLL/ECE.
 
 ### Consistency / invariance metrics
 For rotation/translation, **prediction stability** across small shifts can directly test invariance claims. This measures agreement between predictions under a neighborhood of minor transforms and is a strong complement to accuracy‑only metrics.
@@ -199,7 +195,7 @@ Each run creates `results/<run_name>_<timestamp>/` with:
 	Reports top‑1 prediction agreement with clean predictions for each corruption setting.
 
 - `summary.csv`  
-	Per‑model × per‑family AUDC summary.
+	Per‑model × per‑family trend summary (AUDC, slope, and max‑severity deltas).
 
 - `config_snapshot.json`  
 	Frozen config for reproducibility.

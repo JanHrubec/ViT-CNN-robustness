@@ -9,26 +9,30 @@ import yaml
 
 @dataclass
 class DatasetConfig:
-    # CIFAR-100 is the only supported dataset in this project.
     name: str = "cifar100"
     root: str = "./data/cifar100"
-    subset_per_class: int | None = 10
-    batch_size: int = 64
+    subset_per_class: int | None = 50
+    batch_size: int = 128
     num_workers: int = 4
 
 
 @dataclass
 class ModelsConfig:
-    # Start with classic baseline pair; add ConvNeXt as optional extension.
-    names: list[str] = field(default_factory=lambda: ["resnet50", "vit_b_16"])
+    names: list[str] = field(default_factory=lambda: ["resnet18", "vit_b_32"])
 
 
 @dataclass
 class CorruptionsConfig:
     # Severity sweeps are explicit lists, so every run is easy to reproduce.
-    rotation_degrees: list[float] = field(default_factory=lambda: [0, 5, 10, 15, 20, 30])
-    translation_pixels: list[int] = field(default_factory=lambda: [0, 4, 8, 12, 16])
-    gaussian_sigmas: list[float] = field(default_factory=lambda: [0.0, 0.02, 0.05, 0.10, 0.15])
+    rotation_degrees: list[float] = field(
+        default_factory=lambda: [-30, -25, -20, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 20, 25, 30]
+    )
+    translation_pixels: list[int] = field(
+        default_factory=lambda: [-16, -14, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 14, 16]
+    )
+    gaussian_sigmas: list[float] = field(
+        default_factory=lambda: [0.0, 0.01, 0.02, 0.03, 0.05, 0.07, 0.10, 0.12, 0.15, 0.20]
+    )
 
 
 @dataclass

@@ -5,15 +5,9 @@ from typing import Callable
 
 import torch
 from torchvision.models import (
-    ConvNeXt_Tiny_Weights,
     ResNet18_Weights,
-    ResNet50_Weights,
-    ViT_B_16_Weights,
     ViT_B_32_Weights,
-    convnext_tiny,
     resnet18,
-    resnet50,
-    vit_b_16,
     vit_b_32,
 )
 
@@ -34,22 +28,13 @@ def load_pretrained_model(model_name: str, device: torch.device) -> ModelBundle:
     if model_name == "resnet18":
         weights = ResNet18_Weights.IMAGENET1K_V1
         model = resnet18(weights=weights)
-    elif model_name == "resnet50":
-        weights = ResNet50_Weights.IMAGENET1K_V2
-        model = resnet50(weights=weights)
-    elif model_name == "vit_b_16":
-        weights = ViT_B_16_Weights.IMAGENET1K_V1
-        model = vit_b_16(weights=weights)
     elif model_name == "vit_b_32":
         weights = ViT_B_32_Weights.IMAGENET1K_V1
         model = vit_b_32(weights=weights)
-    elif model_name == "convnext_tiny":
-        weights = ConvNeXt_Tiny_Weights.IMAGENET1K_V1
-        model = convnext_tiny(weights=weights)
     else:
         raise ValueError(
             f"Unsupported model '{model_name}'. "
-            "Choose from: resnet18, resnet50, vit_b_16, vit_b_32, convnext_tiny."
+            "Choose from: resnet18, vit_b_32."
         )
 
     # `eval()` disables dropout-like layers; this is pure inference.
