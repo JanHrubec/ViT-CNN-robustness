@@ -7,8 +7,10 @@ import torch
 from torchvision.models import (
     ResNet18_Weights,
     ViT_B_32_Weights,
+    ConvNeXt_Tiny_Weights,
     resnet18,
     vit_b_32,
+    convnext_tiny,
 )
 
 
@@ -31,6 +33,9 @@ def load_pretrained_model(model_name: str, device: torch.device) -> ModelBundle:
     elif model_name == "vit_b_32":
         weights = ViT_B_32_Weights.IMAGENET1K_V1
         model = vit_b_32(weights=weights)
+    elif model_name == "convnext_tiny":
+        weights = ConvNeXt_Tiny_Weights.IMAGENET1K_V1
+        model = convnext_tiny(weights=weights)
     else:
         raise ValueError(
             f"Unsupported model '{model_name}'. "
