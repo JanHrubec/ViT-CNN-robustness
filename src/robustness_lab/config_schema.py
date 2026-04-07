@@ -23,7 +23,6 @@ class ModelsConfig:
 
 @dataclass
 class CorruptionsConfig:
-    # Severity sweeps are explicit lists, so every run is easy to reproduce.
     rotation_degrees: list[float] = field(
         default_factory=lambda: [-30, -25, -20, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 20, 25, 30]
     )
@@ -46,23 +45,21 @@ class EvaluationConfig:
 
 @dataclass
 class MetricsConfig:
-    # Keep the defaults aligned with common robustness literature.
     enable_topk: bool = True
-    enable_nll: bool = False
-    enable_ece: bool = False
+    enable_nll: bool = True
+    enable_ece: bool = True
     ece_bins: int = 15
-    enable_stability: bool = False
+    enable_stability: bool = True
 
 
 @dataclass
 class OutputConfig:
     output_dir: str = "./results"
-    run_name: str = "baseline"
+    run_name: str = "base"
 
 
 @dataclass
 class ExperimentConfig:
-    # Top-level container mirrors YAML sections one-to-one.
     dataset: DatasetConfig = field(default_factory=DatasetConfig)
     models: ModelsConfig = field(default_factory=ModelsConfig)
     corruptions: CorruptionsConfig = field(default_factory=CorruptionsConfig)
@@ -72,7 +69,6 @@ class ExperimentConfig:
 
 
 def _merge_dataclass(dc_cls: type, values: dict[str, Any] | None):
-    """Merge user-provided values over dataclass defaults."""
     if values is None:
         return dc_cls()
     defaults = dc_cls()
@@ -82,7 +78,6 @@ def _merge_dataclass(dc_cls: type, values: dict[str, Any] | None):
 
 
 def load_experiment_config(path: str | Path) -> ExperimentConfig:
-    """Load YAML config and coerce it into typed config dataclasses."""
     with Path(path).open("r", encoding="utf-8") as f:
         payload = yaml.safe_load(f) or {}
 

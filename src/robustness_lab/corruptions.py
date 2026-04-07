@@ -12,14 +12,12 @@ from .config_schema import CorruptionsConfig
 
 @dataclass(frozen=True)
 class CorruptionSpec:
-    """One concrete corruption condition (family + severity + stable name)."""
     family: str
     severity: float
     name: str
 
 
 def build_corruption_specs(cfg: CorruptionsConfig) -> list[CorruptionSpec]:
-    """Expand config lists into a flat sweep of corruption specs."""
     specs: list[CorruptionSpec] = []
 
     for deg in cfg.rotation_degrees:
@@ -36,7 +34,6 @@ def build_corruption_specs(cfg: CorruptionsConfig) -> list[CorruptionSpec]:
 
 
 def _apply_rotation(x: torch.Tensor, deg: float) -> torch.Tensor:
-    # Bilinear interpolation keeps behavior smooth across severities.
     return F.rotate(x, angle=deg, interpolation=InterpolationMode.BILINEAR, fill=0)
 
 
@@ -67,7 +64,6 @@ def _apply_translation_y(x: torch.Tensor, px: int) -> torch.Tensor:
 def _apply_gaussian_noise(x: torch.Tensor, sigma: float, generator: torch.Generator) -> torch.Tensor:
     if sigma <= 0:
         return x
-    # Noise is generated in the same tensor space [0,1], then clipped.
     noise = torch.randn(x.shape, generator=generator, device=x.device, dtype=x.dtype) * sigma
     return torch.clamp(x + noise, 0.0, 1.0)
 
@@ -79,8 +75,6 @@ def make_corruption_transform(
 ) -> Callable:
     """
     Returns callable that expects a PIL image and outputs preprocessed tensor.
-    Corruption is applied in tensor [0,1] space before model-specific preprocessing,
-    so all models see the *same* corrupted content.
     """
 
     generator = torch.Generator().manual_seed(seed)
@@ -99,14 +93,12 @@ def make_corruption_transform(
         else:
             raise ValueError(f"Unknown corruption family: {spec.family}")
 
-        # Important: use model's own resize/normalize pipeline after corruption.
         return preprocess(x2)
 
     return _transform
 
 
 def make_clean_transform(preprocess: Callable) -> Callable:
-    """Prepare clean image with the exact same model preprocessing chain."""
     def _transform(img):
         x = F.pil_to_tensor(img).float() / 255.0
         return preprocess(x)
@@ -115,7 +107,7 @@ def make_clean_transform(preprocess: Callable) -> Callable:
 
 
 def group_specs_by_family(specs: Iterable[CorruptionSpec]) -> dict[str, list[CorruptionSpec]]:
-    """Utility for reporting/plotting grouped by corruption family."""
+    """Utility for plotting grouped by corruption type."""
     out: dict[str, list[CorruptionSpec]] = {}
     for s in specs:
         out.setdefault(s.family, []).append(s)

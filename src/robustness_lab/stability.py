@@ -5,10 +5,10 @@ from typing import Iterable
 
 
 def compute_prediction_stability(per_sample_rows: Iterable[dict]) -> list[dict]:
-    """Compute prediction stability relative to clean predictions.
+    """
+    Prediction stability relative to clean
 
-    Stability is defined as the fraction of samples whose top-1 prediction
-    matches the clean-condition prediction for the same model and dataset index.
+    Fraction of samples whose top-1 prediction matches clean prediction for the same model and dataset index
     """
     clean_pred: dict[tuple[str, int], int] = {}
 

@@ -21,7 +21,7 @@ from .metrics import (
 
 @dataclass
 class EvalResult:
-    """Standardized evaluation record for one model-condition pair."""
+    """Evaluation record for model-condition pair."""
     model: str
     split: str
     corruption_family: str
@@ -40,7 +40,7 @@ class EvalResult:
 
 @dataclass
 class EvalOutcome:
-    """Evaluation result plus optional per-sample correctness rows."""
+    """Eval results plus optional per-sample correctness rows."""
     result: EvalResult
     per_sample_rows: list[dict]
 
@@ -54,7 +54,7 @@ def _evaluate_loader(
     metrics_cfg: MetricsConfig,
     save_per_sample: bool,
 ) -> dict:
-    """Shared inference loop used by both clean and corrupted evaluation."""
+    """Shared inference loop"""
     state: dict[int, int] = {k: 0 for k in topk}
     per_sample_hits: dict[int, list[int]] = {k: [] for k in topk}
     nll_sum = 0.0
@@ -71,7 +71,7 @@ def _evaluate_loader(
             else:
                 images, targets = batch
                 indices = None
-            # Non-blocking transfer helps when using pinned CPU memory.
+            # Non-blocking transfer
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             logits = model(images)
@@ -128,7 +128,7 @@ def evaluate_clean(
     save_per_sample: bool,
     metrics_cfg: MetricsConfig,
 ) -> EvalOutcome:
-    """Evaluate model on uncorrupted images (baseline)."""
+    """Evaluate model on uncorrupted images"""
     dataset = TransformedDataset(
         base_dataset,
         make_clean_transform(preprocess),
@@ -216,7 +216,7 @@ def evaluate_corruption(
     save_per_sample: bool,
     metrics_cfg: MetricsConfig,
 ) -> EvalOutcome:
-    """Evaluate model under one specific corruption setting."""
+    """Evaluate model under one corruption"""
     transform = make_corruption_transform(spec, preprocess, seed=seed)
     dataset = TransformedDataset(
         base_dataset,

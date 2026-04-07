@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def plot_degradation_curves(results_csv: str | Path, output_dir: str | Path) -> None:
-    """Generate one top-1 degradation plot per corruption family."""
+    """Top-1 degradation plot per corruption family."""
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
@@ -17,7 +17,6 @@ def plot_degradation_curves(results_csv: str | Path, output_dir: str | Path) -> 
 
     required = {"model", "corruption_family", "severity", "top1", "split"}
     if not required.issubset(set(df.columns)):
-        # Fail quietly if schema is incomplete; caller still has raw CSV.
         return
 
     eval_df = df[df["split"] == "corrupted"].copy()
@@ -29,7 +28,7 @@ def plot_degradation_curves(results_csv: str | Path, output_dir: str | Path) -> 
 
         plt.figure(figsize=(7, 4.5))
         for model_name in sorted(family_df["model"].unique()):
-            # Sort by severity so line progression is visually meaningful.
+            # Sort by severity
             mdf = family_df[family_df["model"] == model_name].sort_values("severity")
             plt.plot(mdf["severity"], mdf["top1"], marker="o", label=model_name)
 

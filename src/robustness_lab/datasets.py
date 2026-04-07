@@ -13,10 +13,8 @@ from .config_schema import DatasetConfig
 
 
 class TransformedDataset(Dataset):
-    """Thin wrapper: keeps labels from base dataset, swaps transform dynamically.
-
-    When `return_index` is True, __getitem__ returns (image, target, index),
-    which enables paired analyses across corruptions.
+    """
+    When `return_index`, __getitem__ returns (image, target, index) - paired analyses.
     """
 
     def __init__(self, base: Dataset, transform: Callable, return_index: bool = False):
@@ -36,7 +34,6 @@ class TransformedDataset(Dataset):
 
 
 def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
-    """Create deterministic balanced subset by sampling fixed count per class."""
     g = torch.Generator().manual_seed(seed)
     by_class: dict[int, list[int]] = defaultdict(list)
 
@@ -49,7 +46,6 @@ def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
 
     selected: list[int] = []
     for cls in sorted(by_class):
-        # Shuffle within class with seeded generator for repeatable subsets.
         cls_indices = torch.tensor(by_class[cls], dtype=torch.long)
         perm = cls_indices[torch.randperm(len(cls_indices), generator=g)]
         take = min(per_class, len(perm))
@@ -59,13 +55,11 @@ def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
 
 
 def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
-    """Build untransformed base dataset; transforms are attached later per condition."""
+    """Build untransformed base dataset"""
     root = Path(cfg.root).expanduser()
 
     if cfg.name == "cifar100":
         dataset = CIFAR100(root=str(root), train=False, download=True, transform=None)
-    else:
-        raise ValueError("Only cifar100 is supported in this project.")
 
     if cfg.subset_per_class is not None:
         dataset = _subset_per_class(dataset, cfg.subset_per_class, seed=seed)
@@ -74,11 +68,10 @@ def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
 
 
 def build_loader(dataset: Dataset, cfg: DatasetConfig) -> DataLoader:
-    """Build evaluation dataloader with stable ordering (`shuffle=False`)."""
+    """Build evaluation dataloader"""
     num_workers = cfg.num_workers
     start_method = mp.get_start_method(allow_none=True)
     if num_workers > 0 and start_method in (None, "spawn", "forkserver"):
-        # Local transform closures are not picklable under spawn; use single worker.
         num_workers = 0
     return DataLoader(
         dataset,

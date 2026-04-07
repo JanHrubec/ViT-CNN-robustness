@@ -12,14 +12,13 @@ def update_topk_correct(
     ks: Iterable[int],
     state: dict[int, int],
 ) -> None:
-    """Update running top-k correct counters for a batch."""
+    """Update running top-k counters"""
     max_k = max(ks)
     _, pred = logits.topk(max_k, dim=1)
     pred_t = pred.t()
     correct = pred_t.eq(targets.view(1, -1).expand_as(pred_t))
 
     for k in ks:
-        # Count sample as correct if ground truth appears anywhere in top-k.
         hits = correct[:k].any(dim=0).sum().item()
         state[k] = state.get(k, 0) + int(hits)
 
@@ -29,7 +28,7 @@ def topk_hits_per_sample(
     targets: torch.Tensor,
     ks: Iterable[int],
 ) -> dict[int, torch.Tensor]:
-    """Return per-sample binary hit tensors for each requested top-k."""
+    """Per-sample binary hit tensors for each top-k"""
     max_k = max(ks)
     _, pred = logits.topk(max_k, dim=1)
     correct = pred.eq(targets.view(-1, 1))
@@ -43,13 +42,13 @@ def negative_log_likelihood_per_sample(
     logits: torch.Tensor,
     targets: torch.Tensor,
 ) -> torch.Tensor:
-    """Return per-sample negative log-likelihood values."""
+    """Per-sample negative log-likelihood values."""
     log_probs = torch.log_softmax(logits, dim=1)
     return -log_probs.gather(1, targets.view(-1, 1)).squeeze(1)
 
 
 class ECEAccumulator:
-    """Streaming Expected Calibration Error accumulator."""
+    """Expected Calibration Error accumulator."""
 
     def __init__(self, bins: int = 15, device: torch.device | None = None) -> None:
         self.bins = bins
@@ -64,7 +63,7 @@ class ECEAccumulator:
         conf, pred = probs.max(dim=1)
         acc = pred.eq(targets).float()
 
-        # Bin by confidence; loop is fine for 15 bins and keeps clarity.
+        # Bin by confidence
         for i in range(self.bins):
             left, right = self.edges[i], self.edges[i + 1]
             mask = (conf > left) & (conf <= right)
@@ -83,24 +82,21 @@ class ECEAccumulator:
 
 
 def topk_accuracy_from_state(state: dict[int, int], total: int) -> dict[str, float]:
-    """Convert accumulated counts into top-k accuracies."""
+    """Accumulated counts to top-k accuracies"""
     if total <= 0:
         return {f"top{k}": 0.0 for k in state}
     return {f"top{k}": state[k] / total for k in sorted(state)}
 
 
 def robustness_ratio(clean_acc: float, corrupt_acc: float) -> float:
-    """Relative robustness: corrupted accuracy normalized by clean accuracy."""
+    """Corrupted accuracy normalized by clean accuracy."""
     if clean_acc <= 0:
         return 0.0
     return corrupt_acc / clean_acc
 
 
 def audc(severities: list[float], accuracies: list[float]) -> float:
-    """Normalized area under accuracy-vs-severity curve.
-
-    Higher value means the model keeps more accuracy as corruption increases.
-    """
+    """Normalized area under accuracy-vs-severity curve. Higher value better"""
     if len(severities) < 2:
         return 0.0
     x = np.asarray(severities, dtype=float)
@@ -111,7 +107,7 @@ def audc(severities: list[float], accuracies: list[float]) -> float:
 
 
 def linear_trend_slope(severities: list[float], values: list[float]) -> float:
-    """Return slope of a least-squares line fitted to value vs severity."""
+    """Slope of line fitted to value vs severity."""
     if len(severities) < 2:
         return 0.0
     x = np.asarray(severities, dtype=float)
@@ -121,12 +117,12 @@ def linear_trend_slope(severities: list[float], values: list[float]) -> float:
 
 
 def endpoint_delta(reference: float, at_max_severity: float) -> float:
-    """Difference between clean metric and metric at highest severity."""
+    """Difference between clean and corrupted at highest severity"""
     return float(at_max_severity - reference)
 
 
 def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins: int = 15) -> float:
-    """Compute classic ECE using equal-width confidence bins."""
+    """Classic ECE with equal-width confidence bins"""
     probs = torch.softmax(logits, dim=1)
     conf, pred = probs.max(dim=1)
     acc = pred.eq(targets)
@@ -138,7 +134,6 @@ def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins
         left, right = edges[i], edges[i + 1]
         mask = (conf > left) & (conf <= right)
         if mask.any():
-            # Weighted absolute gap between confidence and empirical accuracy.
             bin_acc = acc[mask].float().mean()
             bin_conf = conf[mask].mean()
             ece += (mask.float().mean()) * torch.abs(bin_acc - bin_conf)
@@ -152,7 +147,7 @@ def bootstrap_ci(
     alpha: float = 0.05,
     seed: int = 42,
 ) -> tuple[float, float]:
-    """Bootstrap confidence interval for the mean of scalar values."""
+    """Confidence interval for the mean of scalar values."""
     if not values:
         return (0.0, 0.0)
 
@@ -162,7 +157,6 @@ def bootstrap_ci(
     means = []
 
     for _ in range(iters):
-        # Resample with replacement, then recompute mean.
         sample = rng.choice(arr, size=n, replace=True)
         means.append(sample.mean())
 

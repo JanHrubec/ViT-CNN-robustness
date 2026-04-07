@@ -7,34 +7,31 @@ from pathlib import Path
 from .config_schema import load_experiment_config
 from .corruptions import build_corruption_specs
 from .datasets import build_base_dataset
-from .io_utils import save_csv, save_json, utc_timestamp
+from .io_utils import save_csv, save_json, timestamp
 from .metrics import audc, endpoint_delta, linear_trend_slope, robustness_ratio
 from .models import load_pretrained_model
 from .plots import plot_degradation_curves
 from .runner import EvalResult, evaluate_clean, evaluate_corruption
 from .stability import compute_prediction_stability
-from .utils import ensure_dir, resolve_device, set_global_seed
+from .utils import resolve_device, set_global_seed
 
 
 def parse_args() -> argparse.Namespace:
-    # Keep CLI simple: one config file drives the whole run.
-    parser = argparse.ArgumentParser(description="Run CNN vs ViT robustness benchmark.")
+    parser = argparse.ArgumentParser(description="Run benchmark")
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/base_experiment.yaml",
-        help="Path to YAML config.",
+        default="configs/base.yaml",
+        help="Path to YAML config",
     )
     return parser.parse_args()
 
 
 def _result_row(result: EvalResult, clean_top1: float | None = None) -> dict:
-    # Convert dataclass to a plain dict so CSV writing is straightforward.
     row = asdict(result)
     if result.top1 is None or clean_top1 is None:
         row["robustness_ratio_top1"] = None
     else:
-        # For corrupted rows, ratio is relative to this model's clean performance.
         row["robustness_ratio_top1"] = robustness_ratio(clean_top1, result.top1)
     return row
 
@@ -43,12 +40,12 @@ def main() -> None:
     args = parse_args()
     cfg = load_experiment_config(args.config)
 
-    # One seed for reproducibility across sampling and noise generation.
+    # One seed for reproducibility
     set_global_seed(cfg.evaluation.seed)
     device = resolve_device(cfg.evaluation.device)
 
-    run_name = f"{cfg.output.run_name}_{utc_timestamp()}"
-    run_dir = ensure_dir(Path(cfg.output.output_dir) / run_name)
+    run_name = f"{cfg.output.run_name}_{timestamp()}"
+    run_dir = Path(cfg.output.output_dir) / run_name
 
     base_dataset = build_base_dataset(cfg.dataset, seed=cfg.evaluation.seed)
     specs = build_corruption_specs(cfg.corruptions)
@@ -59,7 +56,7 @@ def main() -> None:
     per_sample_rows: list[dict] = []
 
     for model_name in cfg.models.names:
-        # Every model comes bundled with its own expected preprocessing.
+        # Every model bundled with its preprocessing
         bundle = load_pretrained_model(model_name, device)
 
         clean_outcome = evaluate_clean(
@@ -108,7 +105,6 @@ def main() -> None:
             if result.ece is not None:
                 family_ece.setdefault(spec.family, []).append((spec.severity, result.ece))
 
-        # Summarize each corruption family into one number for easier comparison.
         all_families = sorted(set(family_top1) | set(family_nll) | set(family_ece))
         for family in all_families:
             top1_points = sorted(family_top1.get(family, []), key=lambda x: x[0])
@@ -156,7 +152,6 @@ def main() -> None:
             raise ValueError("Prediction stability requires save_per_sample=true.")
         stability_rows = compute_prediction_stability(per_sample_rows)
         save_csv(run_dir / "stability.csv", stability_rows)
-    # Generate quick diagnostic figures right after metrics are saved.
     plot_degradation_curves(results_csv, run_dir)
 
     print(f"Done. Artifacts written to: {run_dir}")

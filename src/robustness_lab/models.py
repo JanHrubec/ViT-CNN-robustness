@@ -14,7 +14,7 @@ from torchvision.models import (
 
 @dataclass
 class ModelBundle:
-    """Bundle model and metadata needed during evaluation."""
+    """Bundle model and metadata"""
     name: str
     model: torch.nn.Module
     preprocess: Callable
@@ -22,7 +22,7 @@ class ModelBundle:
 
 
 def load_pretrained_model(model_name: str, device: torch.device) -> ModelBundle:
-    """Load a supported pretrained torchvision model with matching transforms."""
+    """Load pretrained torchvision model with transforms"""
     model_name = model_name.lower()
 
     if model_name == "resnet18":
@@ -37,10 +37,10 @@ def load_pretrained_model(model_name: str, device: torch.device) -> ModelBundle:
             "Choose from: resnet18, vit_b_32."
         )
 
-    # `eval()` disables dropout-like layers; this is pure inference.
+    # pure inference
     model.eval().to(device)
 
-    # Categories are useful later if you want class-level diagnostics.
+    # Categories for class-level statistics?
     categories = weights.meta.get("categories", [])
     class_names = [str(x) for x in categories] if categories else []
 
