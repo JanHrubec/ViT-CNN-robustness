@@ -8,11 +8,10 @@ from .config_schema import load_experiment_config
 from .corruptions import build_corruption_specs
 from .datasets import build_base_dataset
 from .io_utils import save_csv, save_json, timestamp
-from .metrics import audc, endpoint_delta, linear_trend_slope, robustness_ratio
+from .metrics import audc, endpoint_delta, linear_trend_slope, robustness_ratio, compute_prediction_stability
 from .models import load_pretrained_model
 from .plots import plot_degradation_curves
 from .runner import EvalResult, evaluate_clean, evaluate_corruption
-from .stability import compute_prediction_stability
 from .utils import resolve_device, set_global_seed
 
 
