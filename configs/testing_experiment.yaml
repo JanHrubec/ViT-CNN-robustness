@@ -1,0 +1,35 @@
+dataset:
+  name: cifar100
+  root: ./data/cifar100
+  subset_per_class: 50
+  batch_size: 128
+  num_workers: 4
+
+models:
+  names:
+    - resnet101
+    - vit_b_16
+    - convnext_small
+
+corruptions:
+  rotation_degrees: [-30, -18, -6, 0, 6, 18, 30]
+  translation_pixels: [-16, -8, 0, 8, 16]
+  gaussian_sigmas: [0.0, 0.05, 0.10, 0.15, 0.20]
+
+evaluation:
+  device: auto
+  seed: 42
+  topk: [1, 5]
+  bootstrap_iters: 1000
+  save_per_sample: true
+
+metrics:
+  enable_topk: true
+  enable_nll: true
+  enable_ece: true
+  ece_bins: 15
+  enable_stability: true
+
+output:
+  output_dir: ./results
+  run_name: testing

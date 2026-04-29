@@ -1,213 +1,172 @@
-# CNN vs ViT Robustness Benchmark (EE Foundation)
+# CNN vs ViT Robustness Benchmark
 
-This project implements the full experimental plan for comparing robustness of CNNs and Vision Transformers under controlled corruptions. The code is modular, reproducible, and designed to produce interpretable, paper-ready results.
+This repository runs a modular robustness benchmark comparing a plain CNN, a Vision Transformer, and a modern CNN on CIFAR-100 under controlled input corruptions.
 
----
-
-## 1) Research focus
-
-**Primary question**  
-To what extent does the architectural transition from convolution to self‑attention affect model robustness under rotation, translation, and noise?
-
-**Hypothesis (initial)**
-- CNNs (translation‑friendly inductive bias) will degrade more slowly under translation.
-- ViTs (global attention from layer 1) may preserve performance under some global distortions but can be sensitive to positional shifts.
-- Noise robustness may be more dependent on frequency bias and training priors than architecture alone.
+The project is currently **inference-only** (no training loop), with dense corruption sweeps and configurable metrics for clearer degradation trends. **Three models of comparable capacity** are benchmarked to isolate architectural differences from capacity confounds.
 
 ---
 
-## 2) Scope and fairness constraints
+## Current project scope
 
-1. **Task**: Image classification only.
-2. **Training regime**: Start with frozen pretrained models (no finetuning).
-3. **Input resolution**: Use each model’s official preprocessing pipeline to avoid mismatched normalization or resizing.
-4. **Evaluation set**: Identical dataset subset and identical corruption pipeline across all models.
-5. **Compute budget**: Inference‑only first, optional finetuning extension if needed.
-
----
-
-## 3) Model selection strategy
-
-### Core comparison (Phase A)
-- **CNN**: ResNet‑18
-- **ViT**: ViT‑B/32
-
-Rationale: smaller, faster baselines that remain standard and reproducible.
-
-### Model swap criteria
-- Public pretrained weights available.
-- Similar clean top‑1 baseline on chosen dataset.
-- Runtime feasible on available hardware.
+- Dataset: CIFAR-100 only
+- **Three models of comparable capacity**:
+  - **ResNet-101** (44.5M params) — plain CNN baseline
+  - **ViT-B/16** (86.6M params) — Vision Transformer
+  - **ConvNeXt-Small** (50.2M params) — modern CNN variant
+  - Capacity spread: 1.9× (ResNet-101 vs ViT-B/16), avoiding architectural confounds from capacity differences
+- Corruptions: rotation, translation (x/y), Gaussian noise
+- Metrics: top-k, NLL, ECE, robustness ratio, trend summaries, prediction stability
 
 ---
 
-## 4) Dataset choice and sampling
+## Repository structure
 
-### Dataset used
-- **CIFAR‑100** (fixed for this project)
+Core source files currently live directly under [src](src):
 
----
-
-## 5) Corruption/manipulation protocol
-
-**Rotation**  
-$$\theta \in \{-30, -20, -15, -10, -5, 0, 5, 10, 15, 20, 30\}$$
-
-**Translation**  
-$$\Delta x, \Delta y \in \{-16, -12, -8, -4, 0, 4, 8, 12, 16\}$$
-
-**Noise (Gaussian)**  
-$$\sigma \in \{0.00, 0.02, 0.05, 0.10, 0.15\}$$
-
-All corruptions are applied in tensor space $[0,1]$ before model‑specific preprocessing so every architecture sees identical corrupted content.
+- [src/main.py](src/main.py) — experiment orchestration
+- [src/config_schema.py](src/config_schema.py) — YAML config dataclasses + loader
+- [src/datasets.py](src/datasets.py) — CIFAR-100 loading, class-balanced subset, dataloader
+- [src/corruptions.py](src/corruptions.py) — corruption specification and transform builders
+- [src/models.py](src/models.py) — pretrained model loading and preprocessing
+- [src/runner.py](src/runner.py) — clean/corrupted evaluation loops and per-sample logging
+- [src/metrics.py](src/metrics.py) — metric computation and trend utilities
+- [src/plots.py](src/plots.py) — corruption-family degradation plots
+- [src/io_utils.py](src/io_utils.py) — CSV/JSON persistence
+- [src/utils.py](src/utils.py) — seed and device utilities
+- [run_experiment.py](run_experiment.py) — thin entry script
 
 ---
 
-## 6) Metrics and analysis
+## Configuration (single source of truth)
 
-### Primary metrics
-1. **Top‑1 accuracy** per corruption level.
-2. **Robustness ratio**:  
-$$R(c) = \frac{Acc_{corrupt}(c)}{Acc_{clean}}$$
-3. **AUDC**: normalized area under degradation curve.
+The run configuration is in [configs/base_experiment.yaml](configs/base_experiment.yaml).
 
-### Secondary metrics (configurable)
-- **Top‑5 accuracy**
-- **NLL (cross‑entropy)**
-- **ECE** (calibration under corruption)
-- **Trend summaries**: AUDC, linear slope, and max-severity delta for top‑1/NLL/ECE.
+### Dataset block
 
-### Consistency / invariance metrics
-For rotation/translation, **prediction stability** across small shifts can directly test invariance claims. This measures agreement between predictions under a neighborhood of minor transforms and is a strong complement to accuracy‑only metrics.
+- `name`: currently intended as `cifar100`
+- `root`: data directory
+- `subset_per_class`: balanced evaluation subset size
+- `batch_size`, `num_workers`
 
----
+### Models block
 
-## 7) Methodology decisions (with trade‑offs)
+- `names`: list of model IDs to run
+- Available models:
+  - `resnet101` (44.5M params)
+  - `vit_b_16` (86.6M params)
+  - `convnext_small` (50.2M params)
+- Both config files (`testing_experiment.yaml` and `production_experiment.yaml`) use all three models
 
-### Why top‑$k$ is still the baseline
-- **Pros**: standard in vision robustness literature, easy to interpret, comparable across papers.
-- **Cons**: hides confidence shifts and probability mass changes.
+### Corruptions block
 
-### Why add NLL and ECE (optional)
-- **NLL** captures confidence degradation even when top‑1 remains correct.
-- **ECE** measures reliability, which is critical in safety‑sensitive scenarios.
+Dense sweeps are enabled by default for better trend visibility:
 
-### Why keep metrics configurable
-Different sections of the paper emphasize different properties (accuracy vs calibration vs invariance). Configurable metrics prevent overfitting your methodology to one interpretation and keep results transparent.
+- `rotation_degrees`
+- `translation_pixels`
+- `gaussian_sigmas`
 
----
+### Evaluation block
 
-## 8) Interpretation layer
+- `device`: `auto | cpu | cuda | mps`
+- `seed`
+- `topk`
+- `bootstrap_iters`
+- `save_per_sample`
 
-### CNN
-- Grad‑CAM on final convolutional block.
+### Metrics block
 
-### ViT
-- Attention rollout or attention distance statistics.
+- `enable_topk`
+- `enable_nll`
+- `enable_ece`
+- `ece_bins`
+- `enable_stability`
 
-Interpretability should link observed failures to the expected behavior of locality vs global attention.
+### Output block
 
----
-
-## 9) Reproducibility requirements
-
-- Fixed random seeds.
-- Config‑driven experiments (YAML + snapshot).
-- Version‑pinned dependencies.
-- Consistent preprocessing with official model weights.
-- Automatic CSV and plot logging.
+- `output_dir`
+- `run_name`
 
 ---
 
-## 10) Project map (what each file does)
+## Methodology implemented in code
 
-### Entry points
-- [run_experiment.py](run_experiment.py): Tiny launcher.
-- [src/robustness_lab/main.py](src/robustness_lab/main.py): Experiment orchestrator.
+For each model:
 
-### Configuration
-- [configs/base_experiment.yaml](configs/base_experiment.yaml): All experiment settings.
-- [src/robustness_lab/config_schema.py](src/robustness_lab/config_schema.py): Typed config loader.
+1. Evaluate clean subset performance.
+2. Evaluate every corruption/severity condition.
+3. Save both aggregate rows and (optionally) per-sample rows.
+4. Compute per-family summary trends:
+   - `audc_*`
+   - `slope_*`
+   - `delta_*_max`
+5. Optionally compute prediction stability from per-sample predictions.
 
-### Data layer
-- [src/robustness_lab/datasets.py](src/robustness_lab/datasets.py): Dataset building + subset sampling + index‑safe wrappers.
+### Metrics produced
 
-### Corruption layer
-- [src/robustness_lab/corruptions.py](src/robustness_lab/corruptions.py): Rotation/translation/noise sweeps.
-
-### Model layer
-- [src/robustness_lab/models.py](src/robustness_lab/models.py): Pretrained model loading + transforms.
-
-### Evaluation and metrics
-- [src/robustness_lab/runner.py](src/robustness_lab/runner.py): Clean + corrupted evaluation loops.
-- [src/robustness_lab/metrics.py](src/robustness_lab/metrics.py): Top‑$k$, NLL, ECE, AUDC, bootstrap CI.
-
-### Outputs and plots
-- [src/robustness_lab/io_utils.py](src/robustness_lab/io_utils.py): CSV/JSON writing.
-- [src/robustness_lab/plots.py](src/robustness_lab/plots.py): Degradation curves.
+- Accuracy: `top1`, `top5` (+ bootstrap CI)
+- Confidence quality: `nll_mean`, `ece`
+- Robustness normalization: `robustness_ratio_top1`
+- Trend summaries:
+  - `audc_top1`, `audc_nll`, `audc_ece`
+  - `slope_top1`, `slope_nll`, `slope_ece`
+  - `delta_top1_max`, `delta_nll_max`, `delta_ece_max`
+- Invariance proxy:
+  - `stability_top1` (if enabled)
 
 ---
 
-## 11) End‑to‑end run flow
+## Outputs
 
-1. Load YAML config.
-2. Set seed, select device.
-3. Build base dataset (optionally subset‑per‑class).
-4. Build corruption sweep list.
-5. For each model:
-	 - clean evaluation,
-	 - corrupted evaluations,
-	 - AUDC summary per corruption family.
-6. Save artifacts and plots.
+Each run creates: `results/<run_name>_<timestamp>/`
+
+- `config_snapshot.json` — frozen config used for the run
+- `results.csv` — per model × condition metrics
+- `summary.csv` — per model × corruption family trend summary
+- `per_sample.csv` — per-sample outputs (if enabled)
+- `stability.csv` — prediction stability summary (if enabled)
+- `curve_<family>.png` — top-1 degradation curves by family
 
 ---
 
-## 12) Setup
+## Setup
 
-1) Install dependencies
+1) Install dependencies:
 
 - `pip install -r requirements.txt`
 
-2) Prepare data
+2) Dataset:
 
-- CIFAR‑100 will be downloaded automatically to `./data/cifar100`.
-
----
-
-## 13) Run
-
-- `PYTHONPATH=src python run_experiment.py --config configs/base_experiment.yaml`
+- CIFAR-100 is downloaded automatically to the configured root.
 
 ---
 
-## 14) Output files (exact meaning)
+## Run
 
-Each run creates `results/<run_name>_<timestamp>/` with:
+Two experiment configurations are available:
 
-- `results.csv`  
-	One row per model × condition with enabled metrics.
+### Testing Config (Laptop)
 
-- `per_sample.csv`  
-	One row per sample × model × condition with dataset‑level `sample_index` for paired stats.
+Quick validation run with sparse corruption sweep:
+- **7 rotation angles**, **5 translation magnitudes**, **5 noise levels** = ~200 evaluations per model
+- Use for rapid iteration and debugging
+- Command: `python run_experiment.py --config configs/testing_experiment.yaml`
 
-- `stability.csv`  
-	Only written when `metrics.enable_stability=true`.  
-	Reports top‑1 prediction agreement with clean predictions for each corruption setting.
+### Production Config (Strong Machine)
 
-- `summary.csv`  
-	Per‑model × per‑family trend summary (AUDC, slope, and max‑severity deltas).
-
-- `config_snapshot.json`  
-	Frozen config for reproducibility.
-
-- `curve_<family>.png`  
-	Degradation curves per corruption family.
+Dense corruption sweep for publication-grade analysis:
+- **37 rotation angles** (−45° to +45° in 2.5° steps)
+- **21 translation magnitudes** (−20 to +20 pixels in 2-pixel steps)
+- **31 noise levels** (0.0 to 0.3 σ in 0.01 steps)
+- **~2,600+ evaluations per model** for clear degradation trends
+- Expect runtime: hours to days depending on hardware
+- Command: `python run_experiment.py --config configs/production_experiment.yaml`
 
 ---
 
-## 15) Practical extension points
+## Important notes about current state
 
-- Add additional corruption families in [src/robustness_lab/corruptions.py](src/robustness_lab/corruptions.py).
-- Add Grad‑CAM and attention rollout modules under [src/robustness_lab](src/robustness_lab).
-- Add prediction stability metrics for rotation/translation invariance tests.
-- Add statistical report generation from per‑sample outputs.
+- The codebase currently uses module-relative imports in [src/main.py](src/main.py). Keep your Python path/launch method consistent with your current working setup.
+- `compute_prediction_stability()` is implemented in [src/metrics.py](src/metrics.py) (there is no separate stability module file).
+- [src/models.py](src/models.py) supports `resnet101`, `vit_b_16`, and `convnext_small`.
+- **Model selection justification**: ResNet-101 (44.5M) and ViT-B/16 (86.6M) provide a 1.9× capacity spread, enabling clean architectural comparison without capacity confounding. ConvNeXt-Small (50.2M) serves as an additional reference point for modern CNN design. This addresses the parameter imbalance problem identified in ImageNet-P and similar robustness studies.
+
