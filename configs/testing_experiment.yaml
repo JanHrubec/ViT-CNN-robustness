@@ -1,7 +1,7 @@
 dataset:
   name: cifar100
   root: ./data/cifar100
-  subset_per_class: 50
+  subset_per_class: 20
   batch_size: 128
   num_workers: 4
 
@@ -12,15 +12,16 @@ models:
     - convnext_small
 
 corruptions:
-  rotation_degrees: [-30, -18, -6, 0, 6, 18, 30]
+  rotation_degrees: [-30, -15, 0, 15, 30]
   translation_pixels: [-16, -8, 0, 8, 16]
-  gaussian_sigmas: [0.0, 0.05, 0.10, 0.15, 0.20]
+  gaussian_sigmas: [0.0, 0.05, 0.10, 0.20]
 
 evaluation:
   device: auto
   seed: 42
+  num_repeats: 3
   topk: [1, 5]
-  bootstrap_iters: 1000
+  bootstrap_iters: 500
   save_per_sample: true
 
 metrics:

@@ -19,6 +19,7 @@ corruptions:
 evaluation:
   device: auto
   seed: 42
+  num_repeats: 5
   topk: [1, 5]
   bootstrap_iters: 1000
   save_per_sample: true

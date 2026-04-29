@@ -39,7 +39,7 @@ Core source files currently live directly under [src](src):
 
 ## Configuration (single source of truth)
 
-The run configuration is in [configs/base_experiment.yaml](configs/base_experiment.yaml).
+The current experiment configurations are [configs/testing_experiment.yaml](configs/testing_experiment.yaml) and [configs/production_experiment.yaml](configs/production_experiment.yaml).
 
 ### Dataset block
 
@@ -69,6 +69,7 @@ Dense sweeps are enabled by default for better trend visibility:
 
 - `device`: `auto | cpu | cuda | mps`
 - `seed`
+- `num_repeats`: number of independent seeded repeats to average
 - `topk`
 - `bootstrap_iters`
 - `save_per_sample`
@@ -120,11 +121,18 @@ For each model:
 Each run creates: `results/<run_name>_<timestamp>/`
 
 - `config_snapshot.json` — frozen config used for the run
-- `results.csv` — per model × condition metrics
-- `summary.csv` — per model × corruption family trend summary
-- `per_sample.csv` — per-sample outputs (if enabled)
-- `stability.csv` — prediction stability summary (if enabled)
-- `curve_<family>.png` — top-1 degradation curves by family
+- `results_repeat.csv` — raw per-repeat model × condition metrics
+- `results.csv` — metrics averaged across repeats, with repeat std columns
+- `summary_repeat.csv` — raw per-repeat trend summaries
+- `summary.csv` — trend summaries averaged across repeats
+- `per_sample.csv` — per-sample outputs with repeat IDs (if enabled)
+- `stability_repeat.csv` — raw per-repeat prediction stability (if enabled)
+- `stability.csv` — prediction stability averaged across repeats (if enabled)
+- `top1_<family>.png` — Top-1 degradation curves with bootstrap confidence bands
+- `top5_<family>.png` — Top-5 degradation curves with bootstrap confidence bands
+- `nll_mean_<family>.png` — negative log-likelihood curves
+- `ece_<family>.png` — calibration curves
+- `robustness_ratio_top1_<family>.png` — corruption/clean accuracy ratio curves
 
 ---
 
@@ -146,9 +154,9 @@ Two experiment configurations are available:
 
 ### Testing Config (Laptop)
 
-Quick validation run with sparse corruption sweep:
-- **7 rotation angles**, **5 translation magnitudes**, **5 noise levels** = ~200 evaluations per model
-- Use for rapid iteration and debugging
+Quick validation run with sparse corruption sweep and three-seed averaging:
+- **5 rotation angles**, **5 translation magnitudes**, **4 noise levels** = 14 corrupted conditions + clean
+- **20 samples per class** and **3 repeats** keep runtime reasonable for an overnight laptop run
 - Command: `python run_experiment.py --config configs/testing_experiment.yaml`
 
 ### Production Config (Strong Machine)
@@ -157,7 +165,8 @@ Dense corruption sweep for publication-grade analysis:
 - **37 rotation angles** (−45° to +45° in 2.5° steps)
 - **21 translation magnitudes** (−20 to +20 pixels in 2-pixel steps)
 - **31 noise levels** (0.0 to 0.3 σ in 0.01 steps)
-- **~2,600+ evaluations per model** for clear degradation trends
+- **50 samples per class** and **3 repeats** for stable averaged curves
+- **~2,600+ evaluations per model per repeat** for clear degradation trends
 - Expect runtime: hours to days depending on hardware
 - Command: `python run_experiment.py --config configs/production_experiment.yaml`
 

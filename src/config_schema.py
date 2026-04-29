@@ -18,7 +18,7 @@ class DatasetConfig:
 
 @dataclass
 class ModelsConfig:
-    names: list[str] = field(default_factory=lambda: ["resnet18", "vit_b_32"])
+    names: list[str] = field(default_factory=lambda: ["resnet101", "vit_b_16", "convnext_small"])
 
 
 @dataclass
@@ -38,6 +38,7 @@ class CorruptionsConfig:
 class EvaluationConfig:
     device: str = "auto"
     seed: int = 42
+    num_repeats: int = 1
     topk: list[int] = field(default_factory=lambda: [1, 5])
     bootstrap_iters: int = 1000
     save_per_sample: bool = True
