@@ -13,6 +13,7 @@ TIMM_MODEL_ALIASES: dict[str, str] = {
     "resnet101_in1k": "resnet101.a1_in1k",
     "vit_b_16": "vit_base_patch16_224.augreg_in1k",
     "vit_b16_in1k": "vit_base_patch16_224.augreg_in1k",
+    "vit_b_16_in1k": "vit_base_patch16_224.augreg_in1k",
     "convnext_small": "convnext_small.fb_in1k",
     "convnext_small_in1k": "convnext_small.fb_in1k",
 }
