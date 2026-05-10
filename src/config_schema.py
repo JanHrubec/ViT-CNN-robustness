@@ -51,11 +51,10 @@ def apply_yaml_overrides(payload: dict[str, Any], overrides: list[str]) -> None:
 
 @dataclass
 class DatasetConfig:
-    name: str = "cifar100"
-    root: str = "./data/cifar100"
-    # Balanced per-class size: CIFAR-100 test (None = use full split); ImageNet val (required).
-    n_per_class: int | None = 50
-    # ImageNet only: stream/cache this many examples per class before sampling `n_per_class` (max 50 on val).
+    # ImageNet-1k validation subset streamed from Hugging Face.
+    # Use `huggingface-cli login` once (must accept dataset terms).
+    n_per_class: int = 5
+    # Stream/cache this many examples per class before sampling `n_per_class` (max 50 on val).
     pool_per_class: int = 50
     cache_dir: str | None = None
     batch_size: int = 128
@@ -124,22 +123,9 @@ def _merge_dataclass(dc_cls: type, values: dict[str, Any] | None):
     return dc_cls(**as_dict)
 
 
-def _migrate_legacy_dataset_keys(raw: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Maps old YAML keys once at load time so we don't duplicate fields in DatasetConfig."""
-    if not raw:
-        return raw
-    d = dict(raw)
-    if "subset_per_class" in d and "n_per_class" not in d:
-        d["n_per_class"] = d.pop("subset_per_class")
-    if "subset_pool_per_class" in d and "pool_per_class" not in d:
-        d["pool_per_class"] = d.pop("subset_pool_per_class")
-    return d
-
-
 def experiment_config_from_dict(payload: dict[str, Any]) -> ExperimentConfig:
-    dataset_raw = _migrate_legacy_dataset_keys(payload.get("dataset"))
     return ExperimentConfig(
-        dataset=_merge_dataclass(DatasetConfig, dataset_raw),
+        dataset=_merge_dataclass(DatasetConfig, payload.get("dataset")),
         models=_merge_dataclass(ModelsConfig, payload.get("models")),
         corruptions=_merge_dataclass(CorruptionsConfig, payload.get("corruptions")),
         evaluation=_merge_dataclass(EvaluationConfig, payload.get("evaluation")),

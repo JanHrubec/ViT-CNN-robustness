@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import pickle
 import random
-from collections import defaultdict
 from pathlib import Path
 import multiprocessing as mp
 from typing import Any, Callable
@@ -11,7 +10,6 @@ from typing import Any, Callable
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset, Subset
-from torchvision.datasets import CIFAR100
 
 from .config_schema import DatasetConfig
 
@@ -55,27 +53,6 @@ class InMemoryImageDataset(Dataset):
         return img, int(label)
 
 
-def _subset_per_class(dataset: Dataset, per_class: int, seed: int) -> Subset:
-    g = torch.Generator().manual_seed(seed)
-    by_class: dict[int, list[int]] = defaultdict(list)
-
-    targets = getattr(dataset, "targets", None)
-    if targets is None:
-        raise ValueError("Dataset does not expose `targets`, cannot build per-class subset.")
-
-    for i, y in enumerate(targets):
-        by_class[int(y)].append(i)
-
-    selected: list[int] = []
-    for cls in sorted(by_class):
-        cls_indices = torch.tensor(by_class[cls], dtype=torch.long)
-        perm = cls_indices[torch.randperm(len(cls_indices), generator=g)]
-        take = min(per_class, len(perm))
-        selected.extend(perm[:take].tolist())
-
-    return Subset(dataset, selected)
-
-
 def _jpeg_encode(image: Image.Image, quality: int = 92) -> bytes:
     buf = io.BytesIO()
     image.convert("RGB").save(buf, format="JPEG", quality=quality)
@@ -89,7 +66,6 @@ def _stream_imagenet_pools(pool_per_class: int, num_classes: int = 1000) -> dict
         "ILSVRC/imagenet-1k",
         split="validation",
         streaming=True,
-        trust_remote_code=True,
     )
     buckets: dict[int, list[bytes]] = {}
     for example in ds:
@@ -176,38 +152,28 @@ def sample_imagenet_subset(
 
 
 def build_base_dataset(cfg: DatasetConfig, seed: int = 42) -> Dataset:
-    """Build untransformed base dataset (`torchvision` CIFAR or HF ImageNet-1k materialised subset)."""
-    if cfg.name == "cifar100":
-        root = Path(cfg.root).expanduser()
-        dataset: Dataset = CIFAR100(root=str(root), train=False, download=True, transform=None)
-        if cfg.n_per_class is not None:
-            dataset = _subset_per_class(dataset, cfg.n_per_class, seed=seed)
-        return dataset
+    """Build untransformed base dataset from ImageNet-1k val (materialised balanced subset)."""
+    if not cfg.cache_dir:
+        raise ValueError("dataset.cache_dir is required (directory for ImageNet subset cache).")
+    if cfg.n_per_class <= 0:
+        raise ValueError("dataset.n_per_class must be > 0")
 
-    if cfg.name in ("imagenet1k", "imagenet-1k"):
-        if cfg.n_per_class is None:
-            raise ValueError("dataset.n_per_class is required when dataset.name is imagenet1k.")
-        if not cfg.cache_dir:
-            raise ValueError("dataset.cache_dir is required when dataset.name is imagenet1k.")
+    # If pool_per_class == n_per_class, repeats cannot vary the subset.
+    # Bump the pool to at least (n_per_class + 1) if possible (val has max 50/class).
+    desired_pool = int(cfg.pool_per_class)
+    if desired_pool <= int(cfg.n_per_class) and int(cfg.n_per_class) < _IMAGENET_VAL_MAX_PER_CLASS:
+        desired_pool = min(_IMAGENET_VAL_MAX_PER_CLASS, int(cfg.n_per_class) + 1)
 
-        # If pool_per_class == n_per_class, repeats cannot vary the subset.
-        # Bump the pool to at least (n_per_class + 1) if possible (val has max 50/class).
-        desired_pool = int(cfg.pool_per_class)
-        if desired_pool <= int(cfg.n_per_class) and int(cfg.n_per_class) < _IMAGENET_VAL_MAX_PER_CLASS:
-            desired_pool = min(_IMAGENET_VAL_MAX_PER_CLASS, int(cfg.n_per_class) + 1)
+    pool_pc = min(desired_pool, _IMAGENET_VAL_MAX_PER_CLASS)
+    if pool_pc < cfg.n_per_class:
+        raise ValueError(
+            f"pool_per_class ({cfg.pool_per_class}) must be >= n_per_class ({cfg.n_per_class})."
+        )
 
-        pool_pc = min(desired_pool, _IMAGENET_VAL_MAX_PER_CLASS)
-        if pool_pc < cfg.n_per_class:
-            raise ValueError(
-                f"pool_per_class ({cfg.pool_per_class}) must be >= n_per_class ({cfg.n_per_class})."
-            )
-
-        cache_path = Path(cfg.cache_dir).expanduser()
-        buckets = ensure_imagenet_pools(cache_path, pool_per_class=pool_pc)
-        items = sample_imagenet_subset(buckets, cfg.n_per_class, seed=seed)
-        return InMemoryImageDataset(items)
-
-    raise ValueError(f"Unknown dataset.name: {cfg.name!r}")
+    cache_path = Path(cfg.cache_dir).expanduser()
+    buckets = ensure_imagenet_pools(cache_path, pool_per_class=pool_pc)
+    items = sample_imagenet_subset(buckets, cfg.n_per_class, seed=seed)
+    return InMemoryImageDataset(items)
 
 
 def build_loader(dataset: Dataset, cfg: DatasetConfig) -> DataLoader:

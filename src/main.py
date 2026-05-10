@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/testing_experiment.yaml",
+        default="configs/imagenet_experiment.yaml",
         help="Path to YAML config",
     )
     parser.add_argument(

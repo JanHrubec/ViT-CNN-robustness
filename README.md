@@ -1,6 +1,6 @@
 # CNN vs ViT Robustness Benchmark
 
-This repository runs a modular robustness benchmark comparing a plain CNN, a Vision Transformer, and a modern CNN on CIFAR-100 under controlled input corruptions.
+This repository runs a modular robustness benchmark comparing a plain CNN, a Vision Transformer, and a modern CNN on **ImageNet-1k validation** under controlled input corruptions.
 
 The project is currently **inference-only** (no training loop), with dense corruption sweeps and configurable metrics for clearer degradation trends. **Three models of comparable capacity** are benchmarked to isolate architectural differences from capacity confounds.
 
@@ -8,7 +8,7 @@ The project is currently **inference-only** (no training loop), with dense corru
 
 ## Current project scope
 
-- Dataset: CIFAR-100 or ImageNet-1k validation subset (configurable; see `configs/imagenet_experiment.yaml`)
+- Dataset: ImageNet-1k validation subset (streamed from Hugging Face; cached locally)
 - **Three models of comparable capacity**:
   - **ResNet-101** (44.5M params) — plain CNN baseline
   - **ViT-B/16** (86.6M params) — Vision Transformer
@@ -25,7 +25,7 @@ Core source files currently live directly under [src](src):
 
 - [src/main.py](src/main.py) — experiment orchestration
 - [src/config_schema.py](src/config_schema.py) — YAML config dataclasses + loader
-- [src/datasets.py](src/datasets.py) — CIFAR-100 / ImageNet-1k val subset, dataloader
+- [src/datasets.py](src/datasets.py) — ImageNet-1k val subset streaming + cache, dataloader
 - [src/corruptions.py](src/corruptions.py) — corruption specification and transform builders
 - [src/models.py](src/models.py) — pretrained model loading and preprocessing
 - [src/runner.py](src/runner.py) — clean/corrupted evaluation loops and per-sample logging
@@ -39,15 +39,35 @@ Core source files currently live directly under [src](src):
 
 ## Configuration (single source of truth)
 
-The current experiment configurations are [configs/testing_experiment.yaml](configs/testing_experiment.yaml) and [configs/production_experiment.yaml](configs/production_experiment.yaml).
+The main experiment configuration is [configs/imagenet_experiment.yaml](configs/imagenet_experiment.yaml).
 
 ### Dataset block
 
-- `name`: `cifar100` or `imagenet1k`
-- `root`: data directory (CIFAR only)
-- `n_per_class`: balanced per-class evaluation size (CIFAR: omit or set; `null` uses the full test split)
-- `pool_per_class`, `cache_dir`: ImageNet-1k only (HF stream + on-disk pool cache)
+- `n_per_class`: balanced per-class evaluation size (e.g. 5 → 5000 images total)
+- `pool_per_class`: how many images per class to stream/cache before sampling `n_per_class` (max 50 on val)
+- `cache_dir`: where the streamed per-class pools are stored for reuse
 - `batch_size`, `num_workers`
+
+Prerequisite: run `huggingface-cli login` once with a token that has accepted the dataset terms at `https://huggingface.co/datasets/ILSVRC/imagenet-1k`.
+
+### Running
+
+```bash
+cd /Users/jenda/Desktop/School/IB/EE/Implementation
+source .venv/bin/activate
+
+# Default ImageNet experiment
+python run_experiment.py --config configs/imagenet_experiment.yaml
+
+# Quick sanity check (1000 images, clean-only)
+python run_experiment.py \
+  --config configs/imagenet_experiment.yaml \
+  --override evaluation.num_repeats=1 \
+  --override dataset.n_per_class=1 \
+  --override corruptions.rotation_degrees='[]' \
+  --override corruptions.translation_pixels='[]' \
+  --override corruptions.gaussian_sigmas='[0.0]'
+```
 
 ### Models block
 
@@ -145,7 +165,7 @@ Each run creates: `results/<run_name>_<timestamp>/`
 
 2) Dataset:
 
-- CIFAR-100 is downloaded automatically to the configured root.
+- ImageNet-1k validation is streamed from Hugging Face and cached as per-class JPEG pools under `dataset.cache_dir`.
 
 ---
 

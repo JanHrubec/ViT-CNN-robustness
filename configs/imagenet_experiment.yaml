@@ -1,5 +1,4 @@
 dataset:
-  name: imagenet1k
   n_per_class: 5
   pool_per_class: 50
   cache_dir: data/imagenet_val_cache
