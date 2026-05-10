@@ -3,55 +3,57 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+import timm
+import timm.data
 import torch
-from torchvision.models import (
-    ResNet101_Weights,
-    ViT_B_16_Weights,
-    ConvNeXt_Small_Weights,
-    resnet101,
-    vit_b_16,
-    convnext_small,
-)
+
+# Map config / legacy names to timm checkpoints (ImageNet-1k only).
+TIMM_MODEL_ALIASES: dict[str, str] = {
+    "resnet101": "resnet101.a1_in1k",
+    "resnet101_in1k": "resnet101.a1_in1k",
+    "vit_b_16": "vit_base_patch16_224.augreg_in1k",
+    "vit_b16_in1k": "vit_base_patch16_224.augreg_in1k",
+    "convnext_small": "convnext_small.fb_in1k",
+    "convnext_small_in1k": "convnext_small.fb_in1k",
+}
 
 
 @dataclass
 class ModelBundle:
-    """Bundle model and metadata"""
+    """Model plus inference-time preprocessing from the same timm checkpoint."""
+
     name: str
+    timm_id: str
     model: torch.nn.Module
     preprocess: Callable
     class_names: list[str]
 
 
+def resolve_timm_model_id(model_name: str) -> str:
+    """
+    Resolve a config model name to a timm model id.
+
+    - If `model_name` matches a known alias, use the alias mapping (defaults to ImageNet-1k-only checkpoints).
+    - Otherwise, treat `model_name` as an explicit timm identifier and pass it through.
+    """
+    raw = model_name.strip()
+    key = raw.lower()
+    return TIMM_MODEL_ALIASES.get(key, raw)
+
+
 def load_pretrained_model(model_name: str, device: torch.device) -> ModelBundle:
-    """Load pretrained torchvision model with transforms"""
-    model_name = model_name.lower()
-
-    if model_name == "resnet101":
-        weights = ResNet101_Weights.IMAGENET1K_V1
-        model = resnet101(weights=weights)
-    elif model_name == "vit_b_16":
-        weights = ViT_B_16_Weights.IMAGENET1K_V1
-        model = vit_b_16(weights=weights)
-    elif model_name == "convnext_small":
-        weights = ConvNeXt_Small_Weights.IMAGENET1K_V1
-        model = convnext_small(weights=weights)
-    else:
-        raise ValueError(
-            f"Unsupported model '{model_name}'. "
-            "Choose from: resnet101, vit_b_16, convnext_small."
-        )
-
-    # pure inference
+    """Load a timm model (IN-1k only weights) and its standard eval transform."""
+    timm_name = resolve_timm_model_id(model_name)
+    model = timm.create_model(timm_name, pretrained=True)
     model.eval().to(device)
 
-    # Categories for class-level statistics?
-    categories = weights.meta.get("categories", [])
-    class_names = [str(x) for x in categories] if categories else []
+    data_config = timm.data.resolve_model_data_config(model)
+    preprocess = timm.data.create_transform(**data_config, is_training=False)
 
     return ModelBundle(
-        name=model_name,
+        name=model_name.strip(),
+        timm_id=timm_name,
         model=model,
-        preprocess=weights.transforms(),
-        class_names=class_names,
+        preprocess=preprocess,
+        class_names=[],
     )

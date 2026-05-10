@@ -3,11 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable
 
+import numpy as np
 import torch
+from PIL import Image
 from torchvision.transforms import InterpolationMode
 from torchvision.transforms import functional as F
 
 from .config_schema import CorruptionsConfig
+
+
+# Approximate ImageNet mean in 0–255 space — rotation / translation borders (before normalisation).
+_IN_MEAN_FILL_255 = [123, 116, 103]
+_IN_MEAN_FILL_01 = [123 / 255.0, 116 / 255.0, 103 / 255.0]
 
 
 @dataclass(frozen=True)
@@ -33,39 +40,59 @@ def build_corruption_specs(cfg: CorruptionsConfig) -> list[CorruptionSpec]:
     return specs
 
 
-def _apply_rotation(x: torch.Tensor, deg: float) -> torch.Tensor:
-    return F.rotate(x, angle=deg, interpolation=InterpolationMode.BILINEAR, fill=0)
+def _tensor01_to_pil(x: torch.Tensor) -> Image.Image:
+    x = torch.clamp(x, 0.0, 1.0)
+    return F.to_pil_image(x)
 
 
-def _apply_translation_x(x: torch.Tensor, px: int) -> torch.Tensor:
-    return F.affine(
-        x,
-        angle=0.0,
-        translate=[px, 0],
-        scale=1.0,
-        shear=[0.0, 0.0],
+def _pil_to_tensor01(pil_image: Image.Image) -> torch.Tensor:
+    return F.pil_to_tensor(pil_image.convert("RGB")).float() / 255.0
+
+
+def _apply_rotation_pil(pil_image: Image.Image, deg: float) -> Image.Image:
+    return F.rotate(
+        pil_image,
+        angle=deg,
         interpolation=InterpolationMode.BILINEAR,
-        fill=0,
+        fill=_IN_MEAN_FILL_255,
     )
 
 
-def _apply_translation_y(x: torch.Tensor, px: int) -> torch.Tensor:
-    return F.affine(
+def _apply_translation_x_pil(pil_image: Image.Image, px: int) -> Image.Image:
+    x = _pil_to_tensor01(pil_image)
+    x2 = F.affine(
         x,
         angle=0.0,
-        translate=[0, px],
+        translate=[float(px), 0.0],
         scale=1.0,
         shear=[0.0, 0.0],
         interpolation=InterpolationMode.BILINEAR,
-        fill=0,
+        fill=_IN_MEAN_FILL_01,
     )
+    return _tensor01_to_pil(x2)
 
 
-def _apply_gaussian_noise(x: torch.Tensor, sigma: float, generator: torch.Generator) -> torch.Tensor:
+def _apply_translation_y_pil(pil_image: Image.Image, px: int) -> Image.Image:
+    x = _pil_to_tensor01(pil_image)
+    x2 = F.affine(
+        x,
+        angle=0.0,
+        translate=[0.0, float(px)],
+        scale=1.0,
+        shear=[0.0, 0.0],
+        interpolation=InterpolationMode.BILINEAR,
+        fill=_IN_MEAN_FILL_01,
+    )
+    return _tensor01_to_pil(x2)
+
+
+def _apply_gaussian_noise_pil(pil_image: Image.Image, sigma: float, rng: np.random.Generator) -> Image.Image:
     if sigma <= 0:
-        return x
-    noise = torch.randn(x.shape, generator=generator, device=x.device, dtype=x.dtype) * sigma
-    return torch.clamp(x + noise, 0.0, 1.0)
+        return pil_image
+    arr = np.array(pil_image.convert("RGB")).astype(np.float32) / 255.0
+    noise = rng.normal(0.0, sigma, arr.shape)
+    arr = np.clip(arr + noise, 0.0, 1.0)
+    return Image.fromarray((arr * 255.0).astype(np.uint8))
 
 
 def make_corruption_transform(
@@ -74,34 +101,31 @@ def make_corruption_transform(
     seed: int,
 ) -> Callable:
     """
-    Returns callable that expects a PIL image and outputs preprocessed tensor.
-    """
+    PIL image → corruption (still PIL) → model preprocess → tensor.
 
-    generator = torch.Generator().manual_seed(seed)
+    Gaussian noise uses additive noise in [0, 1] image space before normalisation.
+    """
+    rng = np.random.default_rng(seed)
 
     def _transform(img) -> torch.Tensor:
-        x = F.pil_to_tensor(img).float() / 255.0
-
         if spec.family == "rotation":
-            x2 = _apply_rotation(x, spec.severity)
+            corrupted = _apply_rotation_pil(img, spec.severity)
         elif spec.family == "translation_x":
-            x2 = _apply_translation_x(x, int(spec.severity))
+            corrupted = _apply_translation_x_pil(img, int(spec.severity))
         elif spec.family == "translation_y":
-            x2 = _apply_translation_y(x, int(spec.severity))
+            corrupted = _apply_translation_y_pil(img, int(spec.severity))
         elif spec.family == "gaussian_noise":
-            x2 = _apply_gaussian_noise(x, spec.severity, generator)
+            corrupted = _apply_gaussian_noise_pil(img, float(spec.severity), rng)
         else:
             raise ValueError(f"Unknown corruption family: {spec.family}")
-
-        return preprocess(x2)
+        return preprocess(corrupted)
 
     return _transform
 
 
 def make_clean_transform(preprocess: Callable) -> Callable:
     def _transform(img):
-        x = F.pil_to_tensor(img).float() / 255.0
-        return preprocess(x)
+        return preprocess(img)
 
     return _transform
 
