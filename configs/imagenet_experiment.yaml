@@ -1,0 +1,37 @@
+dataset:
+  name: imagenet1k
+  n_per_class: 5
+  pool_per_class: 50
+  cache_dir: data/imagenet_val_cache
+  batch_size: 128
+  num_workers: 4
+
+models:
+  names:
+    - resnet101_in1k
+    - vit_b16_in1k
+    - convnext_small_in1k
+
+corruptions:
+  rotation_degrees: [-45, -40, -35, -30, -25, -20, -15, -10, -5, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+  translation_pixels: []
+  gaussian_sigmas: [0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.23, 0.25, 0.28, 0.30]
+
+evaluation:
+  device: auto
+  seed: 42
+  num_repeats: 3
+  topk: [1, 5]
+  bootstrap_iters: 1000
+  save_per_sample: true
+
+metrics:
+  enable_topk: true
+  enable_nll: true
+  enable_ece: true
+  ece_bins: 15
+  enable_stability: true
+
+output:
+  output_dir: ./results
+  run_name: imagenet_in1k

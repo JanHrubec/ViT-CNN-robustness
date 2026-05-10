@@ -8,7 +8,7 @@ The project is currently **inference-only** (no training loop), with dense corru
 
 ## Current project scope
 
-- Dataset: CIFAR-100 only
+- Dataset: CIFAR-100 or ImageNet-1k validation subset (configurable; see `configs/imagenet_experiment.yaml`)
 - **Three models of comparable capacity**:
   - **ResNet-101** (44.5M params) — plain CNN baseline
   - **ViT-B/16** (86.6M params) — Vision Transformer
@@ -25,7 +25,7 @@ Core source files currently live directly under [src](src):
 
 - [src/main.py](src/main.py) — experiment orchestration
 - [src/config_schema.py](src/config_schema.py) — YAML config dataclasses + loader
-- [src/datasets.py](src/datasets.py) — CIFAR-100 loading, class-balanced subset, dataloader
+- [src/datasets.py](src/datasets.py) — CIFAR-100 / ImageNet-1k val subset, dataloader
 - [src/corruptions.py](src/corruptions.py) — corruption specification and transform builders
 - [src/models.py](src/models.py) — pretrained model loading and preprocessing
 - [src/runner.py](src/runner.py) — clean/corrupted evaluation loops and per-sample logging
@@ -43,19 +43,20 @@ The current experiment configurations are [configs/testing_experiment.yaml](conf
 
 ### Dataset block
 
-- `name`: currently intended as `cifar100`
-- `root`: data directory
-- `subset_per_class`: balanced evaluation subset size
+- `name`: `cifar100` or `imagenet1k`
+- `root`: data directory (CIFAR only)
+- `n_per_class`: balanced per-class evaluation size (CIFAR: omit or set; `null` uses the full test split)
+- `pool_per_class`, `cache_dir`: ImageNet-1k only (HF stream + on-disk pool cache)
 - `batch_size`, `num_workers`
 
 ### Models block
 
-- `names`: list of model IDs to run
-- Available models:
-  - `resnet101` (44.5M params)
-  - `vit_b_16` (86.6M params)
-  - `convnext_small` (50.2M params)
-- Both config files (`testing_experiment.yaml` and `production_experiment.yaml`) use all three models
+- `names`: list of model identifiers to run
+  - You can use **aliases** (defaults to ImageNet-1k-only timm checkpoints):
+    - `resnet101` / `resnet101_in1k` → `resnet101.a1_in1k`
+    - `vit_b_16` / `vit_b16_in1k` → `vit_base_patch16_224.augreg_in1k`
+    - `convnext_small` / `convnext_small_in1k` → `convnext_small.fb_in1k`
+  - Or you can put an **explicit timm model id** directly in `names` (for alternative checkpoints), e.g. `resnet101.a1_in1k`.
 
 ### Corruptions block
 

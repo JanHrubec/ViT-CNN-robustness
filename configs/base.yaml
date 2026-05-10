@@ -1,14 +1,15 @@
 dataset:
   name: cifar100
   root: ./data/cifar100
-  subset_per_class: 50
+  n_per_class: 50
   batch_size: 128
   num_workers: 4
 
 models:
   names:
-    - resnet18
-    - vit_b_32
+    - resnet101
+    - vit_b_16
+    - convnext_small
 
 corruptions:
   rotation_degrees: [-30, -25, -20, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 20, 25, 30]
