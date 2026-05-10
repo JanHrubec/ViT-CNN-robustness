@@ -25,6 +25,14 @@ def parse_args() -> argparse.Namespace:
         default="configs/testing_experiment.yaml",
         help="Path to YAML config",
     )
+    parser.add_argument(
+        "--override",
+        dest="config_overrides",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Override nested config (dot path), e.g. evaluation.num_repeats=1. Repeat flag for multiple.",
+    )
     return parser.parse_args()
 
 
@@ -85,7 +93,7 @@ def _aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
 
 def main() -> None:
     args = parse_args()
-    cfg = load_experiment_config(args.config)
+    cfg = load_experiment_config(args.config, overrides=list(args.config_overrides or []))
 
     device = resolve_device(cfg.evaluation.device)
 

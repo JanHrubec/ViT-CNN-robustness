@@ -7,11 +7,57 @@ from typing import Any
 import yaml
 
 
+def _parse_scalar(value: str) -> Any:
+    v = value.strip()
+    low = v.lower()
+    if low in ("true", "false"):
+        return low == "true"
+    if (v.startswith("[") and v.endswith("]")) or (v.startswith("{") and v.endswith("}")):
+        try:
+            return yaml.safe_load(v)
+        except yaml.YAMLError:
+            pass
+    try:
+        return int(v)
+    except ValueError:
+        pass
+    try:
+        return float(v)
+    except ValueError:
+        return v
+
+
+def _set_nested(d: dict[str, Any], keys: list[str], value: Any) -> None:
+    cur = d
+    for k in keys[:-1]:
+        if k not in cur or not isinstance(cur[k], dict):
+            cur[k] = {}
+        cur = cur[k]
+    cur[keys[-1]] = value
+
+
+def apply_yaml_overrides(payload: dict[str, Any], overrides: list[str]) -> None:
+    for raw in overrides:
+        if not raw.strip():
+            continue
+        if "=" not in raw:
+            raise ValueError(f"Invalid override (expected KEY=VALUE): {raw!r}")
+        key_path, _, value_str = raw.partition("=")
+        keys = [k.strip() for k in key_path.split(".") if k.strip()]
+        if not keys:
+            raise ValueError(f"Invalid override key: {raw!r}")
+        _set_nested(payload, keys, _parse_scalar(value_str))
+
+
 @dataclass
 class DatasetConfig:
     name: str = "cifar100"
     root: str = "./data/cifar100"
-    subset_per_class: int | None = 50
+    # Balanced per-class size: CIFAR-100 test (None = use full split); ImageNet val (required).
+    n_per_class: int | None = 50
+    # ImageNet only: stream/cache this many examples per class before sampling `n_per_class` (max 50 on val).
+    pool_per_class: int = 50
+    cache_dir: str | None = None
     batch_size: int = 128
     num_workers: int = 4
 
@@ -78,15 +124,33 @@ def _merge_dataclass(dc_cls: type, values: dict[str, Any] | None):
     return dc_cls(**as_dict)
 
 
-def load_experiment_config(path: str | Path) -> ExperimentConfig:
-    with Path(path).open("r", encoding="utf-8") as f:
-        payload = yaml.safe_load(f) or {}
+def _migrate_legacy_dataset_keys(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Maps old YAML keys once at load time so we don't duplicate fields in DatasetConfig."""
+    if not raw:
+        return raw
+    d = dict(raw)
+    if "subset_per_class" in d and "n_per_class" not in d:
+        d["n_per_class"] = d.pop("subset_per_class")
+    if "subset_pool_per_class" in d and "pool_per_class" not in d:
+        d["pool_per_class"] = d.pop("subset_pool_per_class")
+    return d
 
+
+def experiment_config_from_dict(payload: dict[str, Any]) -> ExperimentConfig:
+    dataset_raw = _migrate_legacy_dataset_keys(payload.get("dataset"))
     return ExperimentConfig(
-        dataset=_merge_dataclass(DatasetConfig, payload.get("dataset")),
+        dataset=_merge_dataclass(DatasetConfig, dataset_raw),
         models=_merge_dataclass(ModelsConfig, payload.get("models")),
         corruptions=_merge_dataclass(CorruptionsConfig, payload.get("corruptions")),
         evaluation=_merge_dataclass(EvaluationConfig, payload.get("evaluation")),
         metrics=_merge_dataclass(MetricsConfig, payload.get("metrics")),
         output=_merge_dataclass(OutputConfig, payload.get("output")),
     )
+
+
+def load_experiment_config(path: str | Path, overrides: list[str] | None = None) -> ExperimentConfig:
+    with Path(path).open("r", encoding="utf-8") as f:
+        payload: dict[str, Any] = yaml.safe_load(f) or {}
+    if overrides:
+        apply_yaml_overrides(payload, overrides)
+    return experiment_config_from_dict(payload)
