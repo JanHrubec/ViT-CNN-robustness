@@ -114,11 +114,11 @@ def save_corruption_preview_gallery(out_dir: str | Path, pil_image: Image.Image,
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     ref = pil_image.convert("RGB")
-    ref.save(out / "00_clean_reference.png")
+    ref.save(out / "00_reference_image__clean_no_corruption.png")
     for spec in specs:
         corrupted = apply_corruption_spec_pil(spec, ref.copy(), seed=seed)
         safe_name = spec.name.replace("/", "_")
-        corrupted.save(out / f"{safe_name}.png")
+        corrupted.save(out / f"corrupted_image__{safe_name}.png")
 
 
 def make_corruption_transform(

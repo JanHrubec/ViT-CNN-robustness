@@ -73,10 +73,10 @@ python run_experiment.py \
 
 Each run writes under `results/<run_name>_<timestamp>/` as it progresses (so a long sweep does not need to hold all rows in RAM):
 
-- `results_repeat.csv`, `per_sample.csv`, `summary_repeat.csv`, and `stability_repeat.csv` are **appended** after each evaluation stage.
-- `results_intermediate.csv` is refreshed after each model finishes (aggregate of `results_repeat.csv` so far).
-- After the full run: `results.csv`, `summary.csv`, `stability.csv`, `metrics_manifest.json`, and PNG plots.
-- `corruption_previews/repeat_<i>_seed_<s>/` contains the **first dataset image** for that repeat (reference class-balanced order) under every corruption, plus `00_clean_reference.png`.
+- `eval_metrics_by_repeat.csv`, `eval_per_sample_predictions_and_metrics.csv`, `corruption_trend_summaries_by_repeat.csv`, and `prediction_stability_by_repeat.csv` are **appended** after each evaluation stage.
+- `eval_metrics_checkpoint_after_each_model.csv` is refreshed after each model finishes (aggregate of the repeat-level metrics so far).
+- After the full run: `eval_metrics_mean_and_std_over_repeats.csv`, `corruption_trend_summaries_mean_over_repeats.csv`, `prediction_stability_mean_and_std_over_repeats.csv`, `run_output_index.json`, and PNG plots (names start with `plot_`).
+- `corruption_previews/repeat_<i>_seed_<s>/` stores the **first dataset image** for that repeat under every corruption: `00_reference_image__clean_no_corruption.png` and `corrupted_image__<spec>.png`.
 
 ### Models block
 
@@ -150,19 +150,22 @@ For each model:
 
 Each run creates: `results/<run_name>_<timestamp>/`
 
-- `config_snapshot.json` — frozen config used for the run
-- `results_repeat.csv` — raw per-repeat model × condition metrics
-- `results.csv` — metrics averaged across repeats, with repeat std columns
-- `summary_repeat.csv` — raw per-repeat trend summaries
-- `summary.csv` — trend summaries averaged across repeats
-- `per_sample.csv` — per-sample outputs with repeat IDs (if enabled)
-- `stability_repeat.csv` — raw per-repeat prediction stability (if enabled)
-- `stability.csv` — prediction stability averaged across repeats (if enabled)
-- `top1_<family>.png` — Top-1 degradation curves with bootstrap confidence bands
-- `top5_<family>.png` — Top-5 degradation curves with bootstrap confidence bands
-- `nll_mean_<family>.png` — negative log-likelihood curves
-- `ece_<family>.png` — calibration curves
-- `robustness_ratio_top1_<family>.png` — corruption/clean accuracy ratio curves
+- `experiment_config_used.json` — frozen config used for the run
+- `eval_metrics_by_repeat.csv` — one row per model × condition × repeat (raw metrics + bootstrap CIs)
+- `eval_metrics_mean_and_std_over_repeats.csv` — same conditions averaged across repeats (± std columns)
+- `corruption_trend_summaries_by_repeat.csv` — per-repeat trend summaries (AUDC, slopes, endpoint deltas)
+- `corruption_trend_summaries_mean_over_repeats.csv` — those summaries averaged across repeats
+- `eval_per_sample_predictions_and_metrics.csv` — per-sample hits, NLL, preds (if enabled)
+- `prediction_stability_by_repeat.csv` — per-repeat stability vs corruption (if enabled)
+- `prediction_stability_mean_and_std_over_repeats.csv` — stability averaged across repeats (if enabled)
+- `eval_metrics_progress_after_model_<slug>.csv` — snapshot after each model finishes
+- `plot_top1_accuracy_vs_corruption__<family>.png` — Top-1 vs severity (shaded = bootstrap CI or repeat std)
+- `plot_top5_accuracy_vs_corruption__<family>.png` — Top-5 vs severity
+- `plot_mean_nll_vs_corruption__<family>.png` — mean NLL vs severity
+- `plot_ece_vs_corruption__<family>.png` — ECE vs severity
+- `plot_top1_robustness_ratio_vs_corruption__<family>.png` — corrupted/clean top-1 ratio
+- `plot_prediction_stability_top1_vs_corruption__<family>.png` — prediction stability vs severity
+- `run_output_index.json` — index of generated files (row counts, plot list, per-model progress CSVs)
 
 ---
 

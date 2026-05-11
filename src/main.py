@@ -12,6 +12,7 @@ from .config_schema import load_experiment_config
 from .corruptions import build_corruption_specs, save_corruption_preview_gallery
 from .datasets import build_base_dataset
 from .io_utils import append_csv_rows, save_csv, save_json, timestamp
+from . import run_outputs as rout
 from .metrics import (
     PredictionStabilityAggregator,
     audc,
@@ -113,34 +114,38 @@ def _csv_data_rows(path: Path) -> int:
 
 def _write_metrics_manifest(run_dir: Path) -> None:
     files = [
-        "results_repeat.csv",
-        "results_intermediate.csv",
-        "results.csv",
-        "per_sample.csv",
-        "summary_repeat.csv",
-        "summary.csv",
-        "stability_repeat.csv",
-        "stability.csv",
+        rout.EXPERIMENT_CONFIG_JSON,
+        rout.EVAL_METRICS_BY_REPEAT_CSV,
+        rout.EVAL_METRICS_CHECKPOINT_AFTER_EACH_MODEL_CSV,
+        rout.EVAL_METRICS_MEAN_AND_STD_OVER_REPEATS_CSV,
+        rout.EVAL_PER_SAMPLE_PREDICTIONS_AND_METRICS_CSV,
+        rout.CORRUPTION_TREND_SUMMARIES_BY_REPEAT_CSV,
+        rout.CORRUPTION_TREND_SUMMARIES_MEAN_OVER_REPEATS_CSV,
+        rout.PREDICTION_STABILITY_BY_REPEAT_CSV,
+        rout.PREDICTION_STABILITY_MEAN_AND_STD_OVER_REPEATS_CSV,
     ]
-    payload: dict[str, object] = {"artifacts": {}, "plots": []}
+    payload: dict[str, object] = {"artifacts": {}, "plots": [], "progress_csv": []}
     for name in files:
         p = run_dir / name
         payload["artifacts"][name] = {"exists": p.is_file(), "data_rows": _csv_data_rows(p)}
-    payload["plots"] = sorted(p.name for p in run_dir.glob("*.png"))
-    payload["results_progress_csv"] = sorted(p.name for p in run_dir.glob("results_progress_*.csv"))
-    manifest = run_dir / "metrics_manifest.json"
+    payload["plots"] = sorted(p.name for p in run_dir.glob("plot_*.png"))
+    payload["progress_csv"] = sorted(p.name for p in run_dir.glob(rout.PROGRESS_AFTER_MODEL_GLOB))
+    manifest = run_dir / rout.RUN_OUTPUT_INDEX_JSON
     with manifest.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
 
 
 def _refresh_intermediate_aggregates(run_dir: Path) -> None:
     """Rewrite coarse-grained aggregates from the growing repeat-level CSV (cheap vs holding all rows in RAM)."""
-    repeat_path = run_dir / "results_repeat.csv"
+    repeat_path = run_dir / rout.EVAL_METRICS_BY_REPEAT_CSV
     if not repeat_path.is_file() or repeat_path.stat().st_size == 0:
         return
     df = pd.read_csv(repeat_path)
     rows = df.to_dict("records")
-    save_csv(run_dir / "results_intermediate.csv", _aggregate_rows(rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
+    save_csv(
+        run_dir / rout.EVAL_METRICS_CHECKPOINT_AFTER_EACH_MODEL_CSV,
+        _aggregate_rows(rows, ["model", "split", "corruption_family", "corruption_name", "severity"]),
+    )
 
 
 def main() -> None:
@@ -153,15 +158,15 @@ def main() -> None:
     run_dir = Path(cfg.output.output_dir) / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    repeat_results_csv = run_dir / "results_repeat.csv"
-    per_sample_csv = run_dir / "per_sample.csv"
-    repeat_summary_csv = run_dir / "summary_repeat.csv"
-    stability_repeat_csv = run_dir / "stability_repeat.csv"
-    results_csv = run_dir / "results.csv"
-    summary_csv = run_dir / "summary.csv"
-    stability_csv = run_dir / "stability.csv"
+    repeat_results_csv = run_dir / rout.EVAL_METRICS_BY_REPEAT_CSV
+    per_sample_csv = run_dir / rout.EVAL_PER_SAMPLE_PREDICTIONS_AND_METRICS_CSV
+    repeat_summary_csv = run_dir / rout.CORRUPTION_TREND_SUMMARIES_BY_REPEAT_CSV
+    stability_repeat_csv = run_dir / rout.PREDICTION_STABILITY_BY_REPEAT_CSV
+    results_csv = run_dir / rout.EVAL_METRICS_MEAN_AND_STD_OVER_REPEATS_CSV
+    summary_csv = run_dir / rout.CORRUPTION_TREND_SUMMARIES_MEAN_OVER_REPEATS_CSV
+    stability_csv = run_dir / rout.PREDICTION_STABILITY_MEAN_AND_STD_OVER_REPEATS_CSV
 
-    save_json(run_dir / "config_snapshot.json", asdict(cfg))
+    save_json(run_dir / rout.EXPERIMENT_CONFIG_JSON, asdict(cfg))
 
     specs = build_corruption_specs(cfg.corruptions)
     topk = tuple(sorted(set(cfg.evaluation.topk)))
@@ -303,7 +308,7 @@ def main() -> None:
             df_all = pd.read_csv(repeat_results_csv)
             df_model = df_all[df_all["model"] == bundle.name]
             save_csv(
-                run_dir / f"results_progress_{slug}.csv",
+                run_dir / rout.progress_after_model_csv(slug),
                 _aggregate_rows(df_model.to_dict("records"), ["model", "split", "corruption_family", "corruption_name", "severity"]),
             )
 
