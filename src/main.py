@@ -1,18 +1,26 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 from dataclasses import asdict
 from pathlib import Path
 
 import pandas as pd
 
 from .config_schema import load_experiment_config
-from .corruptions import build_corruption_specs
+from .corruptions import build_corruption_specs, save_corruption_preview_gallery
 from .datasets import build_base_dataset
-from .io_utils import save_csv, save_json, timestamp
-from .metrics import audc, endpoint_delta, linear_trend_slope, robustness_ratio, compute_prediction_stability
+from .io_utils import append_csv_rows, save_csv, save_json, timestamp
+from .metrics import (
+    PredictionStabilityAggregator,
+    audc,
+    endpoint_delta,
+    linear_trend_slope,
+    robustness_ratio,
+)
 from .models import load_pretrained_model
-from .plots import plot_degradation_curves
+from .plots import plot_all_run_artifacts
 from .runner import EvalResult, evaluate_clean, evaluate_corruption
 from .utils import resolve_device, set_global_seed
 
@@ -22,7 +30,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=str,
-        default="configs/imagenet_experiment.yaml",
+        default="configs/base.yaml",
         help="Path to YAML config",
     )
     parser.add_argument(
@@ -64,6 +72,7 @@ def _aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
         "ece",
         "robustness_ratio_top1",
         "sample_count",
+        "stability_top1",
     ]
     first_cols = [col for col in ["split", "corruption_family", "corruption_name", "model"] if col in df.columns]
 
@@ -91,6 +100,49 @@ def _aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
     return aggregated
 
 
+def _safe_slug(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_") or "model"
+
+
+def _csv_data_rows(path: Path) -> int:
+    if not path.is_file() or path.stat().st_size == 0:
+        return 0
+    with path.open("r", encoding="utf-8") as f:
+        return max(0, sum(1 for _ in f) - 1)
+
+
+def _write_metrics_manifest(run_dir: Path) -> None:
+    files = [
+        "results_repeat.csv",
+        "results_intermediate.csv",
+        "results.csv",
+        "per_sample.csv",
+        "summary_repeat.csv",
+        "summary.csv",
+        "stability_repeat.csv",
+        "stability.csv",
+    ]
+    payload: dict[str, object] = {"artifacts": {}, "plots": []}
+    for name in files:
+        p = run_dir / name
+        payload["artifacts"][name] = {"exists": p.is_file(), "data_rows": _csv_data_rows(p)}
+    payload["plots"] = sorted(p.name for p in run_dir.glob("*.png"))
+    payload["results_progress_csv"] = sorted(p.name for p in run_dir.glob("results_progress_*.csv"))
+    manifest = run_dir / "metrics_manifest.json"
+    with manifest.open("w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
+def _refresh_intermediate_aggregates(run_dir: Path) -> None:
+    """Rewrite coarse-grained aggregates from the growing repeat-level CSV (cheap vs holding all rows in RAM)."""
+    repeat_path = run_dir / "results_repeat.csv"
+    if not repeat_path.is_file() or repeat_path.stat().st_size == 0:
+        return
+    df = pd.read_csv(repeat_path)
+    rows = df.to_dict("records")
+    save_csv(run_dir / "results_intermediate.csv", _aggregate_rows(rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
+
+
 def main() -> None:
     args = parse_args()
     cfg = load_experiment_config(args.config, overrides=list(args.config_overrides or []))
@@ -99,26 +151,35 @@ def main() -> None:
 
     run_name = f"{cfg.output.run_name}_{timestamp()}"
     run_dir = Path(cfg.output.output_dir) / run_name
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    repeat_results_csv = run_dir / "results_repeat.csv"
+    per_sample_csv = run_dir / "per_sample.csv"
+    repeat_summary_csv = run_dir / "summary_repeat.csv"
+    stability_repeat_csv = run_dir / "stability_repeat.csv"
+    results_csv = run_dir / "results.csv"
+    summary_csv = run_dir / "summary.csv"
+    stability_csv = run_dir / "stability.csv"
+
+    save_json(run_dir / "config_snapshot.json", asdict(cfg))
 
     specs = build_corruption_specs(cfg.corruptions)
     topk = tuple(sorted(set(cfg.evaluation.topk)))
 
-    all_repeat_rows: list[dict] = []
-    all_repeat_summary_rows: list[dict] = []
-    all_per_sample_rows: list[dict] = []
+    stability_agg = PredictionStabilityAggregator() if cfg.metrics.enable_stability else None
 
-    for model_name in cfg.models.names:
-        # Every model bundled with its preprocessing
+    for model_index, model_name in enumerate(cfg.models.names):
         bundle = load_pretrained_model(model_name, device)
-
-        repeat_rows: list[dict] = []
-        repeat_summary_rows: list[dict] = []
-        per_sample_rows: list[dict] = []
 
         for repeat_index in range(cfg.evaluation.num_repeats):
             repeat_seed = cfg.evaluation.seed + repeat_index
             set_global_seed(repeat_seed)
             base_dataset = build_base_dataset(cfg.dataset, seed=repeat_seed)
+
+            if model_index == 0:
+                ref_img, _ = base_dataset[0]
+                preview_dir = run_dir / "corruption_previews" / f"repeat_{repeat_index}_seed_{repeat_seed}"
+                save_corruption_preview_gallery(preview_dir, ref_img, specs, repeat_seed)
 
             clean_outcome = evaluate_clean(
                 model=bundle.model,
@@ -137,8 +198,14 @@ def main() -> None:
             clean_row = _result_row(clean)
             clean_row["repeat"] = repeat_index
             clean_row["seed"] = repeat_seed
-            repeat_rows.append(clean_row)
-            per_sample_rows.extend([{**row, "repeat": repeat_index, "seed": repeat_seed} for row in clean_outcome.per_sample_rows])
+            append_csv_rows(repeat_results_csv, [clean_row])
+
+            ps_clean = [{**row, "repeat": repeat_index, "seed": repeat_seed} for row in clean_outcome.per_sample_rows]
+            if cfg.evaluation.save_per_sample and ps_clean:
+                append_csv_rows(per_sample_csv, ps_clean)
+
+            if stability_agg is not None:
+                stability_agg.ingest_clean_rows(bundle.name, repeat_index, ps_clean)
 
             family_top1: dict[str, list[tuple[float, float]]] = {}
             family_nll: dict[str, list[tuple[float, float]]] = {}
@@ -163,8 +230,29 @@ def main() -> None:
                 row = _result_row(result, clean_top1=clean.top1)
                 row["repeat"] = repeat_index
                 row["seed"] = repeat_seed
-                repeat_rows.append(row)
-                per_sample_rows.extend([{**sample_row, "repeat": repeat_index, "seed": repeat_seed} for sample_row in corrupted_outcome.per_sample_rows])
+                append_csv_rows(repeat_results_csv, [row])
+
+                ps_corrupt = [
+                    {**sample_row, "repeat": repeat_index, "seed": repeat_seed}
+                    for sample_row in corrupted_outcome.per_sample_rows
+                ]
+                if cfg.evaluation.save_per_sample and ps_corrupt:
+                    append_csv_rows(per_sample_csv, ps_corrupt)
+
+                if stability_agg is not None:
+                    stability_agg.ingest_corrupted_rows(
+                        bundle.name,
+                        repeat_index,
+                        spec.family,
+                        float(spec.severity),
+                        ps_corrupt,
+                    )
+                    stab_row = stability_agg.row_for_condition(
+                        bundle.name, repeat_index, spec.family, float(spec.severity)
+                    )
+                    if stab_row is not None:
+                        append_csv_rows(stability_repeat_csv, [stab_row])
+
                 if result.top1 is not None:
                     family_top1.setdefault(spec.family, []).append((spec.severity, result.top1))
                 if result.nll_mean is not None:
@@ -185,53 +273,60 @@ def main() -> None:
                 ece_sev = [p[0] for p in ece_points]
                 ece_vals = [p[1] for p in ece_points]
 
-                repeat_summary_rows.append(
-                    {
-                        "model": bundle.name,
-                        "repeat": repeat_index,
-                        "seed": repeat_seed,
-                        "corruption_family": family,
-                        "clean_top1": clean.top1,
-                        "clean_nll": clean.nll_mean,
-                        "clean_ece": clean.ece,
-                        "audc_top1": audc(top1_sev, top1_vals) if (clean.top1 is not None and len(top1_vals) > 1) else None,
-                        "audc_nll": audc(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
-                        "audc_ece": audc(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
-                        "slope_top1": linear_trend_slope(top1_sev, top1_vals) if len(top1_vals) > 1 else None,
-                        "slope_nll": linear_trend_slope(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
-                        "slope_ece": linear_trend_slope(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
-                        "delta_top1_max": endpoint_delta(clean.top1, top1_vals[-1]) if (clean.top1 is not None and top1_vals) else None,
-                        "delta_nll_max": endpoint_delta(clean.nll_mean, nll_vals[-1]) if (clean.nll_mean is not None and nll_vals) else None,
-                        "delta_ece_max": endpoint_delta(clean.ece, ece_vals[-1]) if (clean.ece is not None and ece_vals) else None,
-                    }
-                )
+                summary_row = {
+                    "model": bundle.name,
+                    "repeat": repeat_index,
+                    "seed": repeat_seed,
+                    "corruption_family": family,
+                    "clean_top1": clean.top1,
+                    "clean_nll": clean.nll_mean,
+                    "clean_ece": clean.ece,
+                    "audc_top1": audc(top1_sev, top1_vals) if (clean.top1 is not None and len(top1_vals) > 1) else None,
+                    "audc_nll": audc(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
+                    "audc_ece": audc(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
+                    "slope_top1": linear_trend_slope(top1_sev, top1_vals) if len(top1_vals) > 1 else None,
+                    "slope_nll": linear_trend_slope(nll_sev, nll_vals) if len(nll_vals) > 1 else None,
+                    "slope_ece": linear_trend_slope(ece_sev, ece_vals) if len(ece_vals) > 1 else None,
+                    "delta_top1_max": endpoint_delta(clean.top1, top1_vals[-1])
+                    if (clean.top1 is not None and top1_vals)
+                    else None,
+                    "delta_nll_max": endpoint_delta(clean.nll_mean, nll_vals[-1])
+                    if (clean.nll_mean is not None and nll_vals)
+                    else None,
+                    "delta_ece_max": endpoint_delta(clean.ece, ece_vals[-1]) if (clean.ece is not None and ece_vals) else None,
+                }
+                append_csv_rows(repeat_summary_csv, [summary_row])
 
-            all_repeat_rows.extend(repeat_rows)
-            all_repeat_summary_rows.extend(repeat_summary_rows)
-            all_per_sample_rows.extend(per_sample_rows)
+        _refresh_intermediate_aggregates(run_dir)
+        slug = _safe_slug(bundle.name)
+        if repeat_results_csv.is_file() and repeat_results_csv.stat().st_size > 0:
+            df_all = pd.read_csv(repeat_results_csv)
+            df_model = df_all[df_all["model"] == bundle.name]
+            save_csv(
+                run_dir / f"results_progress_{slug}.csv",
+                _aggregate_rows(df_model.to_dict("records"), ["model", "split", "corruption_family", "corruption_name", "severity"]),
+            )
 
-    config_snapshot = run_dir / "config_snapshot.json"
-    results_csv = run_dir / "results.csv"
-    repeat_results_csv = run_dir / "results_repeat.csv"
-    summary_csv = run_dir / "summary.csv"
-    repeat_summary_csv = run_dir / "summary_repeat.csv"
-    per_sample_csv = run_dir / "per_sample.csv"
-    stability_repeat_csv = run_dir / "stability_repeat.csv"
+    if repeat_results_csv.is_file() and repeat_results_csv.stat().st_size > 0:
+        df_repeat = pd.read_csv(repeat_results_csv)
+        repeat_rows = df_repeat.to_dict("records")
+        save_csv(results_csv, _aggregate_rows(repeat_rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
 
-    save_json(config_snapshot, asdict(cfg))
-    save_csv(repeat_results_csv, all_repeat_rows)
-    save_csv(results_csv, _aggregate_rows(all_repeat_rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
-    save_csv(repeat_summary_csv, all_repeat_summary_rows)
-    save_csv(summary_csv, _aggregate_rows(all_repeat_summary_rows, ["model", "corruption_family"]))
-    if cfg.evaluation.save_per_sample:
-        save_csv(per_sample_csv, all_per_sample_rows)
+    if repeat_summary_csv.is_file() and repeat_summary_csv.stat().st_size > 0:
+        df_sum_rep = pd.read_csv(repeat_summary_csv)
+        save_csv(summary_csv, _aggregate_rows(df_sum_rep.to_dict("records"), ["model", "corruption_family"]))
+
     if cfg.metrics.enable_stability:
         if not cfg.evaluation.save_per_sample:
             raise ValueError("Prediction stability requires save_per_sample=true.")
-        stability_rows = compute_prediction_stability(all_per_sample_rows)
-        save_csv(stability_repeat_csv, stability_rows)
-        save_csv(run_dir / "stability.csv", _aggregate_rows(stability_rows, ["model", "corruption_family", "severity"]))
-    plot_degradation_curves(results_csv, run_dir)
+        if stability_repeat_csv.is_file() and stability_repeat_csv.stat().st_size > 0:
+            df_stab_rep = pd.read_csv(stability_repeat_csv)
+            save_csv(stability_csv, _aggregate_rows(df_stab_rep.to_dict("records"), ["model", "corruption_family", "severity"]))
+        elif stability_agg is not None:
+            save_csv(stability_csv, _aggregate_rows(stability_agg.to_rows(), ["model", "corruption_family", "severity"]))
+
+    plot_all_run_artifacts(run_dir)
+    _write_metrics_manifest(run_dir)
 
     print(f"Done. Artifacts written to: {run_dir}")
 

@@ -2,7 +2,7 @@
 
 This repository runs a modular robustness benchmark comparing a plain CNN, a Vision Transformer, and a modern CNN on **ImageNet-1k validation** under controlled input corruptions.
 
-The project is currently **inference-only** (no training loop), with dense corruption sweeps and configurable metrics for clearer degradation trends. **Three models of comparable capacity** are benchmarked to isolate architectural differences from capacity confounds.
+The project is currently **inference-only**, with dense corruption sweeps and configurable metrics for clearer degradation trends. **Three models of comparable capacity** are benchmarked to isolate architectural differences from capacity confounds.
 
 ---
 
@@ -39,7 +39,7 @@ Core source files currently live directly under [src](src):
 
 ## Configuration (single source of truth)
 
-The main experiment configuration is [configs/imagenet_experiment.yaml](configs/imagenet_experiment.yaml).
+The main experiment configuration is [configs/base.yaml](configs/base.yaml).
 
 ### Dataset block
 
@@ -56,18 +56,27 @@ Prerequisite: run `huggingface-cli login` once with a token that has accepted th
 cd /Users/jenda/Desktop/School/IB/EE/Implementation
 source .venv/bin/activate
 
-# Default ImageNet experiment
-python run_experiment.py --config configs/imagenet_experiment.yaml
+# Default run (uses configs/base.yaml if you omit --config)
+python run_experiment.py --config configs/base.yaml
 
 # Quick sanity check (1000 images, clean-only)
 python run_experiment.py \
-  --config configs/imagenet_experiment.yaml \
+  --config configs/base.yaml \
   --override evaluation.num_repeats=1 \
   --override dataset.n_per_class=1 \
   --override corruptions.rotation_degrees='[]' \
   --override corruptions.translation_pixels='[]' \
   --override corruptions.gaussian_sigmas='[0.0]'
 ```
+
+### Outputs and incremental writes
+
+Each run writes under `results/<run_name>_<timestamp>/` as it progresses (so a long sweep does not need to hold all rows in RAM):
+
+- `results_repeat.csv`, `per_sample.csv`, `summary_repeat.csv`, and `stability_repeat.csv` are **appended** after each evaluation stage.
+- `results_intermediate.csv` is refreshed after each model finishes (aggregate of `results_repeat.csv` so far).
+- After the full run: `results.csv`, `summary.csv`, `stability.csv`, `metrics_manifest.json`, and PNG plots.
+- `corruption_previews/repeat_<i>_seed_<s>/` contains the **first dataset image** for that repeat (reference class-balanced order) under every corruption, plus `00_clean_reference.png`.
 
 ### Models block
 
@@ -171,32 +180,4 @@ Each run creates: `results/<run_name>_<timestamp>/`
 
 ## Run
 
-Two experiment configurations are available:
-
-### Testing Config (Laptop)
-
-Quick validation run with sparse corruption sweep and three-seed averaging:
-- **5 rotation angles**, **5 translation magnitudes**, **4 noise levels** = 14 corrupted conditions + clean
-- **20 samples per class** and **3 repeats** keep runtime reasonable for an overnight laptop run
-- Command: `python run_experiment.py --config configs/testing_experiment.yaml`
-
-### Production Config (Strong Machine)
-
-Dense corruption sweep for publication-grade analysis:
-- **37 rotation angles** (−45° to +45° in 2.5° steps)
-- **21 translation magnitudes** (−20 to +20 pixels in 2-pixel steps)
-- **31 noise levels** (0.0 to 0.3 σ in 0.01 steps)
-- **50 samples per class** and **3 repeats** for stable averaged curves
-- **~2,600+ evaluations per model per repeat** for clear degradation trends
-- Expect runtime: hours to days depending on hardware
-- Command: `python run_experiment.py --config configs/production_experiment.yaml`
-
----
-
-## Important notes about current state
-
-- The codebase currently uses module-relative imports in [src/main.py](src/main.py). Keep your Python path/launch method consistent with your current working setup.
-- `compute_prediction_stability()` is implemented in [src/metrics.py](src/metrics.py) (there is no separate stability module file).
-- [src/models.py](src/models.py) supports `resnet101`, `vit_b_16`, and `convnext_small`.
-- **Model selection justification**: ResNet-101 (44.5M) and ViT-B/16 (86.6M) provide a 1.9× capacity spread, enabling clean architectural comparison without capacity confounding. ConvNeXt-Small (50.2M) serves as an additional reference point for modern CNN design. This addresses the parameter imbalance problem identified in ImageNet-P and similar robustness studies.
-
+`python run_experiment.py --config configs/base.yaml`

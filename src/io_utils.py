@@ -35,3 +35,30 @@ def save_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def append_csv_rows(path: str | Path, rows: list[dict[str, Any]]) -> None:
+    """Append rows to CSV; write header only when the file is new or empty."""
+    if not rows:
+        return
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    new_file = (not p.exists()) or p.stat().st_size == 0
+
+    if new_file:
+        fieldnames = list(rows[0].keys())
+        write_header = True
+        mode = "w"
+    else:
+        with p.open("r", encoding="utf-8", newline="") as rf:
+            header_line = rf.readline()
+        fieldnames = next(csv.reader([header_line]))
+        write_header = False
+        mode = "a"
+
+    with p.open(mode, encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+        if write_header:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow({k: row.get(k) for k in fieldnames})

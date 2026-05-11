@@ -95,6 +95,32 @@ def _apply_gaussian_noise_pil(pil_image: Image.Image, sigma: float, rng: np.rand
     return Image.fromarray((arr * 255.0).astype(np.uint8))
 
 
+def apply_corruption_spec_pil(spec: CorruptionSpec, pil_image: Image.Image, seed: int) -> Image.Image:
+    """Apply one corruption in PIL space (no model normalisation). Used for previews and shared with transforms."""
+    rng = np.random.default_rng(seed)
+    if spec.family == "rotation":
+        return _apply_rotation_pil(pil_image, spec.severity)
+    if spec.family == "translation_x":
+        return _apply_translation_x_pil(pil_image, int(spec.severity))
+    if spec.family == "translation_y":
+        return _apply_translation_y_pil(pil_image, int(spec.severity))
+    if spec.family == "gaussian_noise":
+        return _apply_gaussian_noise_pil(pil_image, float(spec.severity), rng)
+    raise ValueError(f"Unknown corruption family: {spec.family}")
+
+
+def save_corruption_preview_gallery(out_dir: str | Path, pil_image: Image.Image, specs: list[CorruptionSpec], seed: int) -> None:
+    """Save the reference image and each corrupted variant (PIL after corruption, before timm preprocess)."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    ref = pil_image.convert("RGB")
+    ref.save(out / "00_clean_reference.png")
+    for spec in specs:
+        corrupted = apply_corruption_spec_pil(spec, ref.copy(), seed=seed)
+        safe_name = spec.name.replace("/", "_")
+        corrupted.save(out / f"{safe_name}.png")
+
+
 def make_corruption_transform(
     spec: CorruptionSpec,
     preprocess: Callable,
@@ -104,20 +130,15 @@ def make_corruption_transform(
     PIL image → corruption (still PIL) → model preprocess → tensor.
 
     Gaussian noise uses additive noise in [0, 1] image space before normalisation.
+    The RNG advances across samples so each image gets a fresh noise draw.
     """
-    rng = np.random.default_rng(seed)
+    gaussian_rng = np.random.default_rng(seed) if spec.family == "gaussian_noise" else None
 
     def _transform(img) -> torch.Tensor:
-        if spec.family == "rotation":
-            corrupted = _apply_rotation_pil(img, spec.severity)
-        elif spec.family == "translation_x":
-            corrupted = _apply_translation_x_pil(img, int(spec.severity))
-        elif spec.family == "translation_y":
-            corrupted = _apply_translation_y_pil(img, int(spec.severity))
-        elif spec.family == "gaussian_noise":
-            corrupted = _apply_gaussian_noise_pil(img, float(spec.severity), rng)
+        if spec.family == "gaussian_noise" and gaussian_rng is not None:
+            corrupted = _apply_gaussian_noise_pil(img, float(spec.severity), gaussian_rng)
         else:
-            raise ValueError(f"Unknown corruption family: {spec.family}")
+            corrupted = apply_corruption_spec_pil(spec, img, seed)
         return preprocess(corrupted)
 
     return _transform

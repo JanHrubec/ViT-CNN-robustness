@@ -141,6 +141,88 @@ def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins
 
     return float(ece.item())
 
+class PredictionStabilityAggregator:
+    """
+    Incremental stability stats without holding all per-sample rows in memory.
+    Keyed by (model, repeat, corruption_family, severity).
+    """
+
+    def __init__(self) -> None:
+        self._clean_pred: dict[tuple[str, int], dict[int, int]] = {}
+        self._sum_hits: dict[tuple[str, int, str, float], int] = {}
+        self._counts: dict[tuple[str, int, str, float], int] = {}
+
+    def ingest_clean_rows(self, model: str, repeat: int, rows: Iterable[dict]) -> None:
+        m: dict[int, int] = {}
+        for row in rows:
+            if row.get("split") != "clean":
+                continue
+            idx = row.get("sample_index")
+            pred = row.get("top1_pred")
+            if idx is None or pred is None:
+                continue
+            m[int(idx)] = int(pred)
+        self._clean_pred[(str(model), int(repeat))] = m
+
+    def ingest_corrupted_rows(self, model: str, repeat: int, family: str, severity: float, rows: Iterable[dict]) -> None:
+        clean = self._clean_pred.get((str(model), int(repeat)))
+        if not clean:
+            return
+        key = (str(model), int(repeat), str(family), float(severity))
+        s = self._sum_hits.get(key, 0)
+        c = self._counts.get(key, 0)
+        for row in rows:
+            if row.get("split") != "corrupted":
+                continue
+            idx = row.get("sample_index")
+            pred = row.get("top1_pred")
+            if idx is None or pred is None:
+                continue
+            base = clean.get(int(idx))
+            if base is None:
+                continue
+            s += 1 if int(pred) == int(base) else 0
+            c += 1
+        self._sum_hits[key] = s
+        self._counts[key] = c
+
+    def to_rows(self) -> list[dict]:
+        out: list[dict] = []
+        for key in sorted(self._counts.keys(), key=lambda k: (k[0], k[1], k[2], k[3])):
+            model, repeat, family, severity = key
+            c = self._counts[key]
+            if c <= 0:
+                continue
+            s = self._sum_hits.get(key, 0)
+            out.append(
+                {
+                    "model": model,
+                    "repeat": repeat,
+                    "corruption_family": family,
+                    "severity": severity,
+                    "stability_top1": float(s) / float(c),
+                    "sample_count": int(c),
+                }
+            )
+        return out
+
+    def row_for_condition(self, model: str, repeat: int, family: str, severity: float) -> dict | None:
+        """Single aggregated stability row for one corruption condition (after that condition is evaluated)."""
+        key = (str(model), int(repeat), str(family), float(severity))
+        c = self._counts.get(key, 0)
+        if c <= 0:
+            return None
+        s = self._sum_hits.get(key, 0)
+        return {
+            "model": str(model),
+            "repeat": int(repeat),
+            "corruption_family": str(family),
+            "severity": float(severity),
+            "stability_top1": float(s) / float(c),
+            "sample_count": int(c),
+        }
+
+
 def compute_prediction_stability(per_sample_rows: Iterable[dict]) -> list[dict]:
     """
     Prediction stability relative to clean

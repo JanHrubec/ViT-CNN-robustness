@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 
 from .config_schema import DatasetConfig
 
