@@ -45,16 +45,13 @@ def apply_yaml_overrides(payload: dict[str, Any], overrides: list[str]) -> None:
         key_path, _, value_str = raw.partition("=")
         keys = [k.strip() for k in key_path.split(".") if k.strip()]
         if not keys:
-            raise ValueError(f"Invalid override key: {raw!r}")
+            raise ValueError(f"Invalid key: {raw!r}")
         _set_nested(payload, keys, _parse_scalar(value_str))
 
 
 @dataclass
 class DatasetConfig:
-    # ImageNet-1k validation subset streamed from Hugging Face.
-    # Use `huggingface-cli login` once (must accept dataset terms).
     n_per_class: int = 5
-    # Stream/cache this many examples per class before sampling `n_per_class` (max 50 on val).
     pool_per_class: int = 50
     cache_dir: str | None = None
     batch_size: int = 128
@@ -69,13 +66,13 @@ class ModelsConfig:
 @dataclass
 class CorruptionsConfig:
     rotation_degrees: list[float] = field(
-        default_factory=lambda: [-30, -25, -20, -15, -12, -9, -6, -3, 0, 3, 6, 9, 12, 15, 20, 25, 30]
+        default_factory=lambda: [-60, -54, -48, -42, -36, -30, -24, -18, -12, -6, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60]
     )
     translation_pixels: list[int] = field(
-        default_factory=lambda: [-16, -14, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 14, 16]
+        default_factory=lambda: [-60, -54, -48, -42, -36, -30, -24, -18, -12, -6, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60]
     )
     gaussian_sigmas: list[float] = field(
-        default_factory=lambda: [0.0, 0.01, 0.02, 0.03, 0.05, 0.07, 0.10, 0.12, 0.15, 0.20]
+        default_factory=lambda: [0.025, 0.05, 0.075, 0.10, 0.125, 0.15, 0.175, 0.20, 0.225, 0.25, 0.275, 0.30, 0.325, 0.35, 0.375, 0.40, 0.425, 0.45, 0.475, 0.50]
     )
 
 

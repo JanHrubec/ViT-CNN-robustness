@@ -10,18 +10,11 @@ from tqdm import tqdm
 from .config_schema import DatasetConfig, MetricsConfig
 from .corruptions import CorruptionSpec, make_clean_transform, make_corruption_transform
 from .datasets import TransformedDataset, build_loader
-from .metrics import (
-    ECEAccumulator,
-    bootstrap_ci,
-    negative_log_likelihood_per_sample,
-    topk_accuracy_from_state,
-    topk_hits_per_sample,
-)
+from .metrics import ECEAccumulator, bootstrap_ci, negative_log_likelihood_per_sample, topk_accuracy_from_state, topk_hits_per_sample
 
 
 @dataclass
 class EvalResult:
-    """Evaluation record for model-condition pair."""
     model: str
     split: str
     corruption_family: str
@@ -40,21 +33,11 @@ class EvalResult:
 
 @dataclass
 class EvalOutcome:
-    """Eval results plus optional per-sample correctness rows."""
     result: EvalResult
     per_sample_rows: list[dict]
 
 
-def _evaluate_loader(
-    model: torch.nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-    topk: tuple[int, ...],
-    desc: str,
-    metrics_cfg: MetricsConfig,
-    save_per_sample: bool,
-) -> dict:
-    """Shared inference loop"""
+def evaluate_loader(model: torch.nn.Module, loader: DataLoader, device: torch.device, topk: tuple[int, ...], desc: str, metrics_cfg: MetricsConfig, save_per_sample: bool) -> dict:
     state: dict[int, int] = {k: 0 for k in topk}
     per_sample_hits: dict[int, list[int]] = {k: [] for k in topk}
     nll_sum = 0.0
@@ -71,7 +54,6 @@ def _evaluate_loader(
             else:
                 images, targets = batch
                 indices = None
-            # Non-blocking transfer
             images = images.to(device, non_blocking=True)
             targets = targets.to(device, non_blocking=True)
             logits = model(images)
@@ -115,27 +97,14 @@ def _evaluate_loader(
     return metrics
 
 
-def evaluate_clean(
-    model: torch.nn.Module,
-    model_name: str,
-    preprocess: Callable,
-    base_dataset: Dataset,
-    dataset_cfg: DatasetConfig,
-    device: torch.device,
-    topk: tuple[int, ...],
-    bootstrap_iters: int,
-    seed: int,
-    save_per_sample: bool,
-    metrics_cfg: MetricsConfig,
-) -> EvalOutcome:
-    """Evaluate model on uncorrupted images"""
+def evaluate_clean(model: torch.nn.Module, model_name: str, preprocess: Callable, base_dataset: Dataset, dataset_cfg: DatasetConfig, device: torch.device, topk: tuple[int, ...], bootstrap_iters: int, seed: int, save_per_sample: bool,metrics_cfg: MetricsConfig) -> EvalOutcome:
     dataset = TransformedDataset(
         base_dataset,
         make_clean_transform(preprocess),
         return_index=save_per_sample,
     )
     loader = build_loader(dataset, dataset_cfg)
-    m = _evaluate_loader(
+    m = evaluate_loader(
         model,
         loader,
         device,
@@ -202,21 +171,7 @@ def evaluate_clean(
     return EvalOutcome(result=result, per_sample_rows=per_sample_rows)
 
 
-def evaluate_corruption(
-    model: torch.nn.Module,
-    model_name: str,
-    preprocess: Callable,
-    base_dataset: Dataset,
-    dataset_cfg: DatasetConfig,
-    device: torch.device,
-    topk: tuple[int, ...],
-    spec: CorruptionSpec,
-    seed: int,
-    bootstrap_iters: int,
-    save_per_sample: bool,
-    metrics_cfg: MetricsConfig,
-) -> EvalOutcome:
-    """Evaluate model under one corruption"""
+def evaluate_corruption(model: torch.nn.Module, model_name: str, preprocess: Callable, base_dataset: Dataset, dataset_cfg: DatasetConfig, device: torch.device, topk: tuple[int, ...], spec: CorruptionSpec, seed: int, bootstrap_iters: int, save_per_sample: bool, metrics_cfg: MetricsConfig) -> EvalOutcome:
     transform = make_corruption_transform(spec, preprocess, seed=seed)
     dataset = TransformedDataset(
         base_dataset,
@@ -225,7 +180,7 @@ def evaluate_corruption(
     )
     loader = build_loader(dataset, dataset_cfg)
 
-    m = _evaluate_loader(
+    m = evaluate_loader(
         model,
         loader,
         device,

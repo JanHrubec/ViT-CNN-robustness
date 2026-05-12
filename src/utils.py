@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import random
-from pathlib import Path
 
 import numpy as np
 import torch
 
 
 def set_global_seed(seed: int) -> None:
-    """For reproducibility"""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -16,7 +14,6 @@ def set_global_seed(seed: int) -> None:
 
 
 def resolve_device(requested: str = "auto") -> torch.device:
-    """Find target device"""
     if requested == "auto":
         if torch.cuda.is_available():
             return torch.device("cuda")

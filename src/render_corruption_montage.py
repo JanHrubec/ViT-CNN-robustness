@@ -1,16 +1,6 @@
-#!/usr/bin/env python3
-"""
-Build a single PNG montage: one row per corruption family, one column per severity
-from the same YAML as the benchmark (see configs/base.yaml → corruptions).
-
-Usage (from repo root):
-  python scripts/render_corruption_montage.py --config configs/base.yaml --out corruption_montage.png
-  python scripts/render_corruption_montage.py --config configs/base.yaml --image path/to/photo.jpg --out out.png --seed 42
-"""
 from __future__ import annotations
 
 import argparse
-import math
 import sys
 from pathlib import Path
 
@@ -24,8 +14,7 @@ from src.config_schema import load_experiment_config
 from src.corruptions import apply_corruption_spec_pil, build_corruption_specs, group_specs_by_family
 
 
-def _default_thumbnail_image(size: int = 224) -> Image.Image:
-    """RGB gradient so shifts / rotation are easy to see."""
+def default_thumbnail_image(size: int = 224) -> Image.Image:
     px = Image.new("RGB", (size, size))
     d = ImageDraw.Draw(px)
     for y in range(size):
@@ -37,7 +26,7 @@ def _default_thumbnail_image(size: int = 224) -> Image.Image:
     return px
 
 
-def _load_font(size: int = 11):
+def load_font(size: int = 11):
     try:
         return ImageFont.truetype("DejaVuSans.ttf", size)
     except OSError:
@@ -55,7 +44,7 @@ def build_montage(
 ) -> Image.Image:
     """Stack families vertically; within each family, severities left→right."""
     order = ("rotation", "translation_x", "translation_y", "gaussian_noise")
-    font = _load_font(11)
+    font = load_font(11)
     rows: list[Image.Image] = []
 
     for family in order:
@@ -110,7 +99,7 @@ def main() -> None:
     if args.image:
         ref = Image.open(args.image).convert("RGB")
     else:
-        ref = _default_thumbnail_image(224)
+        ref = default_thumbnail_image(224)
 
     montage = build_montage(
         ref=ref,

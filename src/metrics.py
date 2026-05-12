@@ -7,13 +7,7 @@ import numpy as np
 import torch
 
 
-def update_topk_correct(
-    logits: torch.Tensor,
-    targets: torch.Tensor,
-    ks: Iterable[int],
-    state: dict[int, int],
-) -> None:
-    """Update running top-k counters"""
+def update_topk_correct(logits: torch.Tensor,targets: torch.Tensor,ks: Iterable[int],state: dict[int, int]) -> None:
     max_k = max(ks)
     _, pred = logits.topk(max_k, dim=1)
     pred_t = pred.t()
@@ -24,12 +18,7 @@ def update_topk_correct(
         state[k] = state.get(k, 0) + int(hits)
 
 
-def topk_hits_per_sample(
-    logits: torch.Tensor,
-    targets: torch.Tensor,
-    ks: Iterable[int],
-) -> dict[int, torch.Tensor]:
-    """Per-sample binary hit tensors for each top-k"""
+def topk_hits_per_sample(logits: torch.Tensor,targets: torch.Tensor,ks: Iterable[int]) -> dict[int, torch.Tensor]:
     max_k = max(ks)
     _, pred = logits.topk(max_k, dim=1)
     correct = pred.eq(targets.view(-1, 1))
@@ -39,18 +28,12 @@ def topk_hits_per_sample(
     return out
 
 
-def negative_log_likelihood_per_sample(
-    logits: torch.Tensor,
-    targets: torch.Tensor,
-) -> torch.Tensor:
-    """Per-sample negative log-likelihood values."""
+def negative_log_likelihood_per_sample(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     log_probs = torch.log_softmax(logits, dim=1)
     return -log_probs.gather(1, targets.view(-1, 1)).squeeze(1)
 
 
 class ECEAccumulator:
-    """Expected Calibration Error accumulator."""
-
     def __init__(self, bins: int = 15, device: torch.device | None = None) -> None:
         self.bins = bins
         self.device = device
@@ -83,21 +66,18 @@ class ECEAccumulator:
 
 
 def topk_accuracy_from_state(state: dict[int, int], total: int) -> dict[str, float]:
-    """Accumulated counts to top-k accuracies"""
     if total <= 0:
         return {f"top{k}": 0.0 for k in state}
     return {f"top{k}": state[k] / total for k in sorted(state)}
 
 
 def robustness_ratio(clean_acc: float, corrupt_acc: float) -> float:
-    """Corrupted accuracy normalized by clean accuracy."""
     if clean_acc <= 0:
         return 0.0
     return corrupt_acc / clean_acc
 
 
 def audc(severities: list[float], accuracies: list[float]) -> float:
-    """Normalized area under accuracy-vs-severity curve. Higher value better"""
     if len(severities) < 2:
         return 0.0
     x = np.asarray(severities, dtype=float)
@@ -108,7 +88,6 @@ def audc(severities: list[float], accuracies: list[float]) -> float:
 
 
 def linear_trend_slope(severities: list[float], values: list[float]) -> float:
-    """Slope of line fitted to value vs severity."""
     if len(severities) < 2:
         return 0.0
     x = np.asarray(severities, dtype=float)
@@ -118,12 +97,10 @@ def linear_trend_slope(severities: list[float], values: list[float]) -> float:
 
 
 def endpoint_delta(reference: float, at_max_severity: float) -> float:
-    """Difference between clean and corrupted at highest severity"""
     return float(at_max_severity - reference)
 
 
 def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins: int = 15) -> float:
-    """Classic ECE with equal-width confidence bins"""
     probs = torch.softmax(logits, dim=1)
     conf, pred = probs.max(dim=1)
     acc = pred.eq(targets)
@@ -142,11 +119,6 @@ def expected_calibration_error(logits: torch.Tensor, targets: torch.Tensor, bins
     return float(ece.item())
 
 class PredictionStabilityAggregator:
-    """
-    Incremental stability stats without holding all per-sample rows in memory.
-    Keyed by (model, repeat, corruption_family, severity).
-    """
-
     def __init__(self) -> None:
         self._clean_pred: dict[tuple[str, int], dict[int, int]] = {}
         self._sum_hits: dict[tuple[str, int, str, float], int] = {}
@@ -207,7 +179,6 @@ class PredictionStabilityAggregator:
         return out
 
     def row_for_condition(self, model: str, repeat: int, family: str, severity: float) -> dict | None:
-        """Single aggregated stability row for one corruption condition (after that condition is evaluated)."""
         key = (str(model), int(repeat), str(family), float(severity))
         c = self._counts.get(key, 0)
         if c <= 0:
@@ -224,11 +195,6 @@ class PredictionStabilityAggregator:
 
 
 def compute_prediction_stability(per_sample_rows: Iterable[dict]) -> list[dict]:
-    """
-    Prediction stability relative to clean
-
-    Fraction of samples whose top-1 prediction matches clean prediction for the same model and dataset index
-    """
     clean_pred: dict[tuple[str, int], int] = {}
 
     for row in per_sample_rows:
@@ -279,13 +245,7 @@ def compute_prediction_stability(per_sample_rows: Iterable[dict]) -> list[dict]:
     return out
 
 
-def bootstrap_ci(
-    values: list[float],
-    iters: int = 1000,
-    alpha: float = 0.05,
-    seed: int = 42,
-) -> tuple[float, float]:
-    """Confidence interval for the mean of scalar values."""
+def bootstrap_ci(values: list[float], iters: int = 1000, alpha: float = 0.05, seed: int = 42) -> tuple[float, float]:
     if not values:
         return (0.0, 0.0)
 

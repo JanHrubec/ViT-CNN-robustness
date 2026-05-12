@@ -38,7 +38,6 @@ def save_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
 
 
 def append_csv_rows(path: str | Path, rows: list[dict[str, Any]]) -> None:
-    """Append rows to CSV; write header only when the file is new or empty."""
     if not rows:
         return
     p = Path(path)

@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _result_row(result: EvalResult, clean_top1: float | None = None) -> dict:
+def result_row(result: EvalResult, clean_top1: float | None = None) -> dict:
     row = asdict(result)
     if result.top1 is None or clean_top1 is None:
         row["robustness_ratio_top1"] = None
@@ -54,7 +54,7 @@ def _result_row(result: EvalResult, clean_top1: float | None = None) -> dict:
     return row
 
 
-def _aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
+def aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
     if not rows:
         return []
 
@@ -101,18 +101,18 @@ def _aggregate_rows(rows: list[dict], group_cols: list[str]) -> list[dict]:
     return aggregated
 
 
-def _safe_slug(name: str) -> str:
+def unique_slug(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_") or "model"
 
 
-def _csv_data_rows(path: Path) -> int:
+def csv_data_rows(path: Path) -> int:
     if not path.is_file() or path.stat().st_size == 0:
         return 0
     with path.open("r", encoding="utf-8") as f:
         return max(0, sum(1 for _ in f) - 1)
 
 
-def _write_metrics_manifest(run_dir: Path) -> None:
+def write_metrics(run_dir: Path) -> None:
     files = [
         rout.EXPERIMENT_CONFIG_JSON,
         rout.EVAL_METRICS_BY_REPEAT_CSV,
@@ -127,7 +127,7 @@ def _write_metrics_manifest(run_dir: Path) -> None:
     payload: dict[str, object] = {"artifacts": {}, "plots": [], "progress_csv": []}
     for name in files:
         p = run_dir / name
-        payload["artifacts"][name] = {"exists": p.is_file(), "data_rows": _csv_data_rows(p)}
+        payload["artifacts"][name] = {"exists": p.is_file(), "data_rows": csv_data_rows(p)}
     payload["plots"] = sorted(p.name for p in run_dir.glob("plot_*.png"))
     payload["progress_csv"] = sorted(p.name for p in run_dir.glob(rout.PROGRESS_AFTER_MODEL_GLOB))
     manifest = run_dir / rout.RUN_OUTPUT_INDEX_JSON
@@ -135,8 +135,7 @@ def _write_metrics_manifest(run_dir: Path) -> None:
         json.dump(payload, f, indent=2)
 
 
-def _refresh_intermediate_aggregates(run_dir: Path) -> None:
-    """Rewrite coarse-grained aggregates from the growing repeat-level CSV (cheap vs holding all rows in RAM)."""
+def refresh_intermediate_aggregates(run_dir: Path) -> None:
     repeat_path = run_dir / rout.EVAL_METRICS_BY_REPEAT_CSV
     if not repeat_path.is_file() or repeat_path.stat().st_size == 0:
         return
@@ -144,7 +143,7 @@ def _refresh_intermediate_aggregates(run_dir: Path) -> None:
     rows = df.to_dict("records")
     save_csv(
         run_dir / rout.EVAL_METRICS_CHECKPOINT_AFTER_EACH_MODEL_CSV,
-        _aggregate_rows(rows, ["model", "split", "corruption_family", "corruption_name", "severity"]),
+        aggregate_rows(rows, ["model", "split", "corruption_family", "corruption_name", "severity"]),
     )
 
 
@@ -200,7 +199,7 @@ def main() -> None:
                 metrics_cfg=cfg.metrics,
             )
             clean = clean_outcome.result
-            clean_row = _result_row(clean)
+            clean_row = result_row(clean)
             clean_row["repeat"] = repeat_index
             clean_row["seed"] = repeat_seed
             append_csv_rows(repeat_results_csv, [clean_row])
@@ -232,7 +231,7 @@ def main() -> None:
                     metrics_cfg=cfg.metrics,
                 )
                 result = corrupted_outcome.result
-                row = _result_row(result, clean_top1=clean.top1)
+                row = result_row(result, clean_top1=clean.top1)
                 row["repeat"] = repeat_index
                 row["seed"] = repeat_seed
                 append_csv_rows(repeat_results_csv, [row])
@@ -302,36 +301,35 @@ def main() -> None:
                 }
                 append_csv_rows(repeat_summary_csv, [summary_row])
 
-        _refresh_intermediate_aggregates(run_dir)
-        slug = _safe_slug(bundle.name)
+        refresh_intermediate_aggregates(run_dir)
+        slug = unique_slug(bundle.name)
         if repeat_results_csv.is_file() and repeat_results_csv.stat().st_size > 0:
             df_all = pd.read_csv(repeat_results_csv)
             df_model = df_all[df_all["model"] == bundle.name]
             save_csv(
                 run_dir / rout.progress_after_model_csv(slug),
-                _aggregate_rows(df_model.to_dict("records"), ["model", "split", "corruption_family", "corruption_name", "severity"]),
+                aggregate_rows(df_model.to_dict("records"), ["model", "split", "corruption_family", "corruption_name", "severity"]),
             )
 
     if repeat_results_csv.is_file() and repeat_results_csv.stat().st_size > 0:
         df_repeat = pd.read_csv(repeat_results_csv)
         repeat_rows = df_repeat.to_dict("records")
-        save_csv(results_csv, _aggregate_rows(repeat_rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
+        save_csv(results_csv, aggregate_rows(repeat_rows, ["model", "split", "corruption_family", "corruption_name", "severity"]))
 
     if repeat_summary_csv.is_file() and repeat_summary_csv.stat().st_size > 0:
         df_sum_rep = pd.read_csv(repeat_summary_csv)
-        save_csv(summary_csv, _aggregate_rows(df_sum_rep.to_dict("records"), ["model", "corruption_family"]))
-
+        save_csv(summary_csv, aggregate_rows(df_sum_rep.to_dict("records"), ["model", "corruption_family"]))
     if cfg.metrics.enable_stability:
         if not cfg.evaluation.save_per_sample:
             raise ValueError("Prediction stability requires save_per_sample=true.")
         if stability_repeat_csv.is_file() and stability_repeat_csv.stat().st_size > 0:
             df_stab_rep = pd.read_csv(stability_repeat_csv)
-            save_csv(stability_csv, _aggregate_rows(df_stab_rep.to_dict("records"), ["model", "corruption_family", "severity"]))
+            save_csv(stability_csv, aggregate_rows(df_stab_rep.to_dict("records"), ["model", "corruption_family", "severity"]))
         elif stability_agg is not None:
-            save_csv(stability_csv, _aggregate_rows(stability_agg.to_rows(), ["model", "corruption_family", "severity"]))
+            save_csv(stability_csv, aggregate_rows(stability_agg.to_rows(), ["model", "corruption_family", "severity"]))
 
     plot_all_run_artifacts(run_dir)
-    _write_metrics_manifest(run_dir)
+    write_metrics(run_dir)
 
     print(f"Done. Artifacts written to: {run_dir}")
 
