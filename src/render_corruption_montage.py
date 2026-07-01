@@ -33,6 +33,26 @@ def load_font(size: int = 11):
         return ImageFont.load_default()
 
 
+def fit_image_in_square(image: Image.Image, size: int, fill: tuple[int, int, int] = (32, 32, 32)) -> Image.Image:
+    """Resize while preserving aspect ratio, then center on a square canvas."""
+    src = image.convert("RGB")
+    w, h = src.size
+    if w <= 0 or h <= 0:
+        return Image.new("RGB", (size, size), fill)
+
+    scale = min(size / w, size / h)
+    resized = src.resize(
+        (max(1, round(w * scale)), max(1, round(h * scale))),
+        Image.Resampling.LANCZOS,
+    )
+
+    canvas = Image.new("RGB", (size, size), fill)
+    x = (size - resized.size[0]) // 2
+    y = (size - resized.size[1]) // 2
+    canvas.paste(resized, (x, y))
+    return canvas
+
+
 def build_montage(
     *,
     ref: Image.Image,
@@ -63,7 +83,7 @@ def build_montage(
             x0 = pad + i * (thumb + pad)
             y0 = pad + label_h
             corrupted = apply_corruption_spec_pil(spec, ref.copy(), seed + i * 9973)
-            corrupted = corrupted.convert("RGB").resize((thumb, thumb), Image.Resampling.BILINEAR)
+            corrupted = fit_image_in_square(corrupted, thumb)
             row.paste(corrupted, (x0, y0))
             label = spec.name.replace("_", " ")
             dr.text((x0, y0 + thumb + 2), label[:18], fill=(200, 200, 200), font=font)
@@ -83,12 +103,21 @@ def build_montage(
     return out
 
 
+def resolve_thumbnail_size(ref: Image.Image, requested_thumb: int) -> int:
+    if requested_thumb > 0:
+        return max(48, requested_thumb)
+
+    # Keep a useful amount of image detail by default, without letting the
+    # montage become unmanageably large for wide corruption sweeps.
+    return max(224, min(384, max(ref.size)))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="Render one montage of all corruption levels from a benchmark YAML.")
     p.add_argument("--config", type=str, default="configs/base.yaml", help="Experiment YAML (uses corruptions block).")
     p.add_argument("--image", type=str, default="", help="Reference RGB image; default = synthetic gradient.")
     p.add_argument("--out", type=str, default="corruption_montage.png", help="Output PNG path.")
-    p.add_argument("--thumb", type=int, default=120, help="Thumbnail edge length (pixels).")
+    p.add_argument("--thumb", type=int, default=0, help="Thumbnail edge length in pixels; 0 = auto.")
     p.add_argument("--seed", type=int, default=42, help="Base RNG seed (Gaussian noise varies per column).")
     args = p.parse_args()
 
@@ -101,10 +130,12 @@ def main() -> None:
     else:
         ref = default_thumbnail_image(224)
 
+    thumb = resolve_thumbnail_size(ref, args.thumb)
+
     montage = build_montage(
         ref=ref,
         specs_by_family=grouped,
-        thumb=max(48, args.thumb),
+        thumb=thumb,
         pad=4,
         label_h=22,
         seed=args.seed,
